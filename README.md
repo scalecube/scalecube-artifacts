@@ -1,4 +1,4 @@
-# ScaleCube Artifacts
+# scalecube-artifacts
 
 Lightweight Java library for resolving and syncing artifacts from remote repositories (e.g.
 GitHub Packages) to local system with support for SNAPSHOT timestamp resolution, checksum
