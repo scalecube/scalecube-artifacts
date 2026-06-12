@@ -36,6 +36,10 @@ class MetadataParserTest {
   }
 
   private static void assertVersioning(Versioning expected, Versioning actual) {
+    if (expected == null) {
+      assertNull(actual);
+      return;
+    }
     assertEquals(expected.latest(), actual.latest(), "latest");
     assertEquals(expected.release(), actual.release(), "release");
     assertEquals(expected.lastUpdated(), actual.lastUpdated(), "lastUpdated");
@@ -299,6 +303,37 @@ class MetadataParserTest {
                                         .timestamp("20260227.160000")
                                         .buildNumber("8"))
                                 .lastUpdated("20260227160000"))));
+
+    builder.add(
+        arguments(
+            "Test#7 - groupId with dots and dashes, artifactId with dashes",
+            """
+            <metadata>
+              <groupId>io.scalecube.my-group</groupId>
+              <artifactId>scalecube-my-artifact</artifactId>
+              <version>3.0.0-SNAPSHOT</version>
+              <versioning>
+                <snapshot>
+                  <timestamp>20260612.090000</timestamp>
+                  <buildNumber>7</buildNumber>
+                </snapshot>
+                <lastUpdated>20260612090000</lastUpdated>
+              </versioning>
+            </metadata>
+            """,
+            (Supplier<Metadata>)
+                () ->
+                    new Metadata()
+                        .groupId("io.scalecube.my-group")
+                        .artifactId("scalecube-my-artifact")
+                        .version("3.0.0-SNAPSHOT")
+                        .versioning(
+                            new Metadata.Versioning()
+                                .snapshot(
+                                    new Metadata.Snapshot()
+                                        .timestamp("20260612.090000")
+                                        .buildNumber("7"))
+                                .lastUpdated("20260612090000"))));
 
     return builder.build();
   }

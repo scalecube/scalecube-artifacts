@@ -34,7 +34,7 @@ public class JarResolver {
    */
   public CompletableFuture<Path> resolveJar(Repository repository, Metadata metadata) {
     try {
-      final var groupId = metadata.groupId().replace(".", "/");
+      final var groupId = metadata.groupId();
       final var artifactId = metadata.artifactId();
       final var version = getVersion(metadata); // e.g., "1.2.3" or "2.1.0-SNAPSHOT"
       final var spec = String.join(":", groupId, artifactId, version);

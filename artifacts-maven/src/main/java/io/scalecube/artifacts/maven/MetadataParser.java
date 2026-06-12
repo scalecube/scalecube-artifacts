@@ -24,6 +24,7 @@ public class MetadataParser {
     Metadata.SnapshotVersion snapshotVersion = null;
 
     String currentElement = null;
+    final var textBuffer = new StringBuilder();
 
     while (reader.hasNext()) {
       int event = reader.next();
@@ -31,6 +32,7 @@ public class MetadataParser {
       switch (event) {
         case XMLStreamConstants.START_ELEMENT:
           currentElement = reader.getLocalName();
+          textBuffer.setLength(0);
 
           switch (currentElement) {
             case "versioning":
@@ -56,83 +58,83 @@ public class MetadataParser {
           break;
 
         case XMLStreamConstants.CHARACTERS:
-          if (reader.isWhiteSpace() || currentElement == null) {
-            break;
-          }
-
-          String text = reader.getText().trim();
-          if (text.isEmpty()) {
-            break;
-          }
-
-          switch (currentElement) {
-            case "groupId":
-              metadata.groupId(text);
-              break;
-            case "artifactId":
-              metadata.artifactId(text);
-              break;
-            case "version":
-              final var versioning = metadata.versioning();
-              if (versioning == null) {
-                // <version> outside of <versioning> => top-level metadata.version (snapshot case)
-                metadata.version(text);
-              } else {
-                final var versions = versioning.versions();
-                if (versions != null) {
-                  // <version> inside <versions> => adds to list
-                  versions.add(text);
-                }
-              }
-              break;
-
-            case "latest":
-              metadata.versioning().latest(text);
-              break;
-            case "release":
-              metadata.versioning().release(text);
-              break;
-            case "lastUpdated":
-              metadata.versioning().lastUpdated(text);
-              break;
-
-            case "timestamp":
-              metadata.versioning().snapshot().timestamp(text);
-              break;
-
-            case "buildNumber":
-              metadata.versioning().snapshot().buildNumber(text);
-              break;
-
-            case "extension":
-              if (snapshotVersion != null) {
-                snapshotVersion.extension(text);
-              }
-              break;
-
-            case "classifier":
-              if (snapshotVersion != null) {
-                snapshotVersion.classifier(text);
-              }
-              break;
-
-            case "value":
-              if (snapshotVersion != null) {
-                snapshotVersion.value(text);
-              }
-              break;
-
-            case "updated":
-              if (snapshotVersion != null) {
-                snapshotVersion.updated(text);
-              }
-              break;
+          if (!reader.isWhiteSpace()) {
+            textBuffer.append(reader.getText());
           }
           break;
 
         case XMLStreamConstants.END_ELEMENT:
-          String end = reader.getLocalName();
-          if ("snapshotVersion".equals(end) && snapshotVersion != null) {
+          final var text = textBuffer.toString().trim();
+          textBuffer.setLength(0);
+
+          if (!text.isEmpty() && currentElement != null) {
+            switch (currentElement) {
+              case "groupId":
+                metadata.groupId(text);
+                break;
+              case "artifactId":
+                metadata.artifactId(text);
+                break;
+              case "version":
+                final var versioning = metadata.versioning();
+                if (versioning == null) {
+                  // <version> outside of <versioning> => top-level metadata.version (snapshot case)
+                  metadata.version(text);
+                } else {
+                  final var versions = versioning.versions();
+                  if (versions != null) {
+                    // <version> inside <versions> => adds to list
+                    versions.add(text);
+                  }
+                }
+                break;
+
+              case "latest":
+                metadata.versioning().latest(text);
+                break;
+              case "release":
+                metadata.versioning().release(text);
+                break;
+              case "lastUpdated":
+                metadata.versioning().lastUpdated(text);
+                break;
+
+              case "timestamp":
+                metadata.versioning().snapshot().timestamp(text);
+                break;
+
+              case "buildNumber":
+                metadata.versioning().snapshot().buildNumber(text);
+                break;
+
+              case "extension":
+                if (snapshotVersion != null) {
+                  snapshotVersion.extension(text);
+                }
+                break;
+
+              case "classifier":
+                if (snapshotVersion != null) {
+                  snapshotVersion.classifier(text);
+                }
+                break;
+
+              case "value":
+                if (snapshotVersion != null) {
+                  snapshotVersion.value(text);
+                }
+                break;
+
+              case "updated":
+                if (snapshotVersion != null) {
+                  snapshotVersion.updated(text);
+                }
+                break;
+            }
+          }
+
+          final var endElement = reader.getLocalName();
+          if ("snapshotVersion".equals(endElement) && snapshotVersion != null) {
             metadata.versioning().snapshotVersions().add(snapshotVersion);
             snapshotVersion = null;
           }
