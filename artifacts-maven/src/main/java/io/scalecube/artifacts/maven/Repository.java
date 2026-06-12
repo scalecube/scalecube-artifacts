@@ -14,7 +14,18 @@ import javax.xml.xpath.XPathFactory;
 import org.w3c.dom.NodeList;
 
 public record Repository(
-    String id, String url, String authz, File repoDir, UpdatePolicy repoUpdatePolicy) {
+    String id,
+    String url,
+    String authz,
+    File repoDir,
+    UpdatePolicy repoUpdatePolicy,
+    int retryMaxAttempts,
+    long retryInitialDelayMs) {
+
+  public Repository(
+      String id, String url, String authz, File repoDir, UpdatePolicy repoUpdatePolicy) {
+    this(id, url, authz, repoDir, repoUpdatePolicy, 10, 3000L);
+  }
 
   public static Repository newInstance(Properties props) {
     final var id = repoId(props);
@@ -22,8 +33,11 @@ public record Repository(
     final var url = repoUrl(props);
     final var authorization = repoAuthorization(props, repoDir, id);
     final var updatePolicy = repoUpdatePolicy(props);
+    final var retryMaxAttempts = repoRetryMaxAttempts(props);
+    final var retryInitialDelayMs = repoRetryInitialDelayMs(props);
 
-    return new Repository(id, url, authorization, repoDir, updatePolicy);
+    return new Repository(
+        id, url, authorization, repoDir, updatePolicy, retryMaxAttempts, retryInitialDelayMs);
   }
 
   public static URI remoteUri(Repository repository, String spec, String name) {
@@ -89,6 +103,16 @@ public record Repository(
   private static UpdatePolicy repoUpdatePolicy(Properties props) {
     final var value = props.getProperty("scalecube.artifacts.maven.repo.updatePolicy");
     return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : UpdatePolicy.REMOTE;
+  }
+
+  private static int repoRetryMaxAttempts(Properties props) {
+    final var value = props.getProperty("scalecube.artifacts.maven.repo.retryMaxAttempts");
+    return value != null ? Integer.parseInt(value) : 10;
+  }
+
+  private static long repoRetryInitialDelayMs(Properties props) {
+    final var value = props.getProperty("scalecube.artifacts.maven.repo.retryInitialDelayMs");
+    return value != null ? Long.parseLong(value) : 3000L;
   }
 
   private static String repoAuthorization(Properties props, File repoDir, String repoId) {
