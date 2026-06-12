@@ -133,6 +133,66 @@ class JarResolverTest {
   }
 
   @Test
+  void shouldResolveWithDottedAndDashedGroupIdAndArtifactId() throws Exception {
+    byte[] jarContent = "real-jar-bytes".getBytes();
+    mockRemoteJar(
+        "/io/scalecube/my-group/scalecube-my-artifact/1.0/scalecube-my-artifact-1.0.jar",
+        jarContent);
+
+    Path result =
+        jarResolver
+            .resolveJar(
+                repository,
+                newMetadata(
+                    "io.scalecube.my-group", "scalecube-my-artifact", "1.0", "20231010120000"))
+            .join();
+
+    assertTrue(Files.exists(result), "JAR should be in .m2");
+    assertArrayEquals(jarContent, Files.readAllBytes(result));
+    assertTrue(
+        result.toString().contains("io/scalecube/my-group"),
+        "Path should use slashes for groupId, got: " + result);
+  }
+
+  @Test
+  void shouldResolveSnapshotWithDottedAndDashedGroupIdAndArtifactId() throws Exception {
+    String timestamp = "20231010.120000";
+    String build = "3";
+    String version = "2.1.0-SNAPSHOT";
+    String timestampedVersion = "2.1.0-" + timestamp + "-" + build;
+
+    byte[] jarContent = "snapshot-bytes".getBytes();
+    mockRemoteJar(
+        "/io/scalecube/my-group/scalecube-my-artifact/"
+            + version
+            + "/scalecube-my-artifact-"
+            + timestampedVersion
+            + ".jar",
+        jarContent);
+
+    Metadata metadata =
+        newMetadata("io.scalecube.my-group", "scalecube-my-artifact", version, "20231010120000")
+            .versioning(
+                new Metadata.Versioning()
+                    .snapshot(new Metadata.Snapshot().timestamp(timestamp).buildNumber(build)));
+
+    Path result = jarResolver.resolveJar(repository, metadata).join();
+
+    Path alias = result.resolveSibling("scalecube-my-artifact-" + version + ".jar");
+    assertTrue(Files.exists(alias), "Snapshot alias should be created");
+    assertArrayEquals(jarContent, Files.readAllBytes(alias));
+
+    Path timestamped =
+        result.resolveSibling("scalecube-my-artifact-" + timestampedVersion + ".jar");
+    assertTrue(Files.exists(timestamped), "Timestamped snapshot should exist");
+    assertArrayEquals(jarContent, Files.readAllBytes(timestamped));
+
+    assertTrue(
+        result.toString().contains("io/scalecube/my-group"),
+        "Path should use slashes for groupId, got: " + result);
+  }
+
+  @Test
   void shouldOverwriteExistingFileSuccessfully() throws Exception {
     // Pre-create "corrupt" file in the destination
     Path targetDir = m2Repo.resolve("com/foo/bar/1.0");
