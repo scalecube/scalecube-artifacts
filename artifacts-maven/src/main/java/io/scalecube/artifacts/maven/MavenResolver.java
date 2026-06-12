@@ -4,12 +4,17 @@ import io.scalecube.artifacts.api.ArtifactResolver;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Entry point for artifact resolution by GAV coordinates. Orchestrates maven metadata checks and
  * JAR downloads based on the provided {@link UpdatePolicy}.
  */
 public class MavenResolver implements ArtifactResolver {
+
+  private static final long MAX_DELAY_MS = 60_000L;
 
   private final Repository repository;
   private final MetadataResolver metadataResolver;
@@ -48,42 +53,71 @@ public class MavenResolver implements ArtifactResolver {
     final var version = split[2];
 
     if (!version.endsWith("-SNAPSHOT")) {
-      // Non-SNAPSHOT (release) case
       if (repository.repoUpdatePolicy() == UpdatePolicy.LOCAL) {
         return CompletableFuture.completedFuture(jarResolver.resolveLocalJar(repository, spec));
       } else {
-        // Download
-        return metadataResolver
-            .resolveRemote(repository, spec)
-            .thenCompose(metadata -> jarResolver.resolveJar(repository, metadata));
+        return doDownload(spec, 1);
       }
     } else {
-      // SNAPSHOT case
       if (repository.repoUpdatePolicy() == UpdatePolicy.LOCAL) {
         return CompletableFuture.completedFuture(jarResolver.resolveLocalJar(repository, spec));
       } else {
-        // REMOTE policy: compare metadata
-        final var current = metadataResolver.getCurrent(repository, spec);
-        return metadataResolver
-            .resolveRemote(repository, spec)
-            .thenCompose(
-                metadata -> {
-                  if (isMetadataChanged(current, metadata)) {
-                    // Download new JAR
-                    return jarResolver.resolveJar(repository, metadata);
-                  } else {
-                    // Return existing local JAR
-                    final var localJar = jarResolver.getLocalJar(repository, spec);
-                    if (!Files.exists(localJar)) {
-                      // Metadata unchanged, but JAR missing
-                      return jarResolver.resolveJar(repository, metadata);
-                    } else {
-                      return CompletableFuture.completedFuture(localJar);
-                    }
-                  }
-                });
+        return doResolveSnapshot(spec, 1);
       }
     }
+  }
+
+  private CompletableFuture<Path> doDownload(String spec, int attempt) {
+    return metadataResolver
+        .resolveRemote(repository, spec)
+        .thenCompose(
+            metadata ->
+                jarResolver
+                    .resolveJar(repository, metadata)
+                    .exceptionallyCompose(
+                        ex -> retryOn404(ex, attempt, () -> doDownload(spec, attempt + 1))));
+  }
+
+  private CompletableFuture<Path> doResolveSnapshot(String spec, int attempt) {
+    final var current = metadataResolver.getCurrent(repository, spec);
+    return metadataResolver
+        .resolveRemote(repository, spec)
+        .thenCompose(
+            metadata -> {
+              if (isMetadataChanged(current, metadata)) {
+                return jarResolver
+                    .resolveJar(repository, metadata)
+                    .exceptionallyCompose(
+                        ex -> retryOn404(ex, attempt, () -> doResolveSnapshot(spec, attempt + 1)));
+              } else {
+                final var localJar = jarResolver.getLocalJar(repository, spec);
+                if (!Files.exists(localJar)) {
+                  return jarResolver
+                      .resolveJar(repository, metadata)
+                      .exceptionallyCompose(
+                          ex ->
+                              retryOn404(ex, attempt, () -> doResolveSnapshot(spec, attempt + 1)));
+                } else {
+                  return CompletableFuture.completedFuture(localJar);
+                }
+              }
+            });
+  }
+
+  private CompletableFuture<Path> retryOn404(
+      Throwable ex, int attempt, Supplier<CompletableFuture<Path>> next) {
+    final Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
+    if (cause instanceof FetchException fe
+        && fe.statusCode() == 404
+        && attempt < repository.retryMaxAttempts()) {
+      final long delayMs =
+          Math.min(repository.retryInitialDelayMs() << (attempt - 1), MAX_DELAY_MS);
+      return CompletableFuture.runAsync(
+              () -> {}, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+          .thenCompose(ignored -> next.get());
+    }
+    return CompletableFuture.failedFuture(
+        ex instanceof CompletionException ? ex : new CompletionException(ex));
   }
 
   private static boolean isMetadataChanged(Metadata local, Metadata remote) {
@@ -91,14 +125,12 @@ public class MavenResolver implements ArtifactResolver {
         || local.versioning() == null
         || remote == null
         || remote.versioning() == null) {
-      // No local metadata or incomplete -> assume changed
       return true;
     }
 
     final var localLastUpdated = local.versioning().lastUpdated();
     final var remoteLastUpdated = remote.versioning().lastUpdated();
     if (localLastUpdated == null || remoteLastUpdated == null) {
-      // Missing timestamps -> assume changed
       return true;
     }
 

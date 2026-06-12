@@ -103,7 +103,7 @@ public class Fetcher {
                 }
                 throw ex != null
                     ? new CompletionException(ex)
-                    : new CompletionException("Fetch failed: " + response.statusCode(), null);
+                    : new CompletionException(new FetchException(response.statusCode()));
               }
               return CompletableFuture.completedFuture(tmp);
             })

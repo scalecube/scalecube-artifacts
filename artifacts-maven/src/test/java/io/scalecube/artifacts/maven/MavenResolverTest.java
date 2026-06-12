@@ -1,9 +1,11 @@
 package io.scalecube.artifacts.maven;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -12,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -372,6 +375,102 @@ class MavenResolverTest {
 
     // Assert
     verify(jarResolver).resolveJar(any(), any()); // fallback download
+  }
+
+  @Test
+  void resolve_release_remotePolicy_retriesOn404ThenSucceeds() {
+    Repository repository =
+        new Repository(
+            "central",
+            "http://localhost:0",
+            "Bearer cool-token",
+            tempCacheDir.toFile(),
+            UpdatePolicy.REMOTE,
+            3,
+            0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.2.3";
+    Metadata meta = new Metadata().groupId("com.foo").artifactId("bar").version("1.2.3");
+
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(CompletableFuture.completedFuture(meta));
+
+    Path fakeJar = tempCacheDir.resolve("bar-1.2.3.jar");
+    when(jarResolver.resolveJar(repository, meta))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
+        .thenReturn(CompletableFuture.completedFuture(fakeJar));
+
+    Path result = mavenResolver.resolve(spec).join();
+
+    assertEquals(fakeJar, result);
+    verify(metadataResolver, times(2)).resolveRemote(repository, spec);
+    verify(jarResolver, times(2)).resolveJar(repository, meta);
+  }
+
+  @Test
+  void resolve_release_remotePolicy_exhaustsRetriesOn404() {
+    Repository repository =
+        new Repository(
+            "central",
+            "http://localhost:0",
+            "Bearer cool-token",
+            tempCacheDir.toFile(),
+            UpdatePolicy.REMOTE,
+            3,
+            0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.2.3";
+    Metadata meta = new Metadata().groupId("com.foo").artifactId("bar").version("1.2.3");
+
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(CompletableFuture.completedFuture(meta));
+    when(jarResolver.resolveJar(repository, meta))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new FetchException(404))));
+
+    assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
+
+    verify(metadataResolver, times(3)).resolveRemote(repository, spec);
+    verify(jarResolver, times(3)).resolveJar(repository, meta);
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_retriesOn404ThenSucceeds() {
+    Repository repository =
+        new Repository(
+            "central",
+            "http://localhost:0",
+            "Bearer cool-token",
+            tempCacheDir.toFile(),
+            UpdatePolicy.REMOTE,
+            3,
+            0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+    Metadata remoteMeta = createSnapshotMetadata("20250309141500", "20250309.141500", "23");
+
+    when(metadataResolver.getCurrent(repository, spec)).thenReturn(null);
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(CompletableFuture.completedFuture(remoteMeta));
+
+    Path fakeJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
+    when(jarResolver.resolveJar(repository, remoteMeta))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
+        .thenReturn(CompletableFuture.completedFuture(fakeJar));
+
+    Path result = mavenResolver.resolve(spec).join();
+
+    assertEquals(fakeJar, result);
+    verify(metadataResolver, times(2)).resolveRemote(repository, spec);
+    verify(jarResolver, times(2)).resolveJar(repository, remoteMeta);
   }
 
   private Metadata createSnapshotMetadata(
