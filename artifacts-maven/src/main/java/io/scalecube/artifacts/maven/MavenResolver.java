@@ -16,7 +16,12 @@ public class MavenResolver implements ArtifactResolver {
   private final JarResolver jarResolver;
 
   public MavenResolver(Repository repository) {
-    this(repository, new MetadataResolver(new Fetcher()), new JarResolver(new Fetcher()));
+    this(
+        repository,
+        new MetadataResolver(
+            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())),
+        new JarResolver(
+            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())));
   }
 
   public MavenResolver(

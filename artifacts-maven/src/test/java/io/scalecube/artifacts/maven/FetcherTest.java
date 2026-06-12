@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -107,10 +108,11 @@ class FetcherTest {
 
   @Test
   void serverConnectionFailure() {
-    // Stop server to simulate connection refused
     server.stop(0);
 
-    CompletableFuture<Path> future = fetcher.get(serverUri, "", tempDir);
+    // Use 1 attempt to avoid retry delays (connection refused is a retryable network error)
+    Fetcher noRetryFetcher = new Fetcher(HttpClient.newHttpClient(), 1, 0L);
+    CompletableFuture<Path> future = noRetryFetcher.get(serverUri, "", tempDir);
 
     assertThrows(CompletionException.class, future::join);
 
@@ -121,6 +123,77 @@ class FetcherTest {
     } catch (IOException e) {
       fail(e);
     }
+  }
+
+  @Test
+  void retriesOnRetryableStatusThenSucceeds() throws Exception {
+    byte[] content = "retry-then-success".getBytes();
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          if (callCount.getAndIncrement() == 0) {
+            ex.sendResponseHeaders(503, -1);
+          } else {
+            ex.sendResponseHeaders(200, content.length);
+            ex.getResponseBody().write(content);
+          }
+          ex.close();
+        });
+
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    Path result = retryFetcher.get(serverUri, "", tempDir).join();
+
+    assertTrue(Files.exists(result));
+    assertArrayEquals(content, Files.readAllBytes(result));
+    assertEquals(2, callCount.get(), "Should have made exactly 2 attempts");
+  }
+
+  @Test
+  void exhaustsRetriesOnPersistentRetryableStatus() {
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          callCount.incrementAndGet();
+          ex.sendResponseHeaders(503, -1);
+          ex.close();
+        });
+
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    CompletionException ex =
+        assertThrows(
+            CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
+
+    assertTrue(ex.getMessage().contains("503"));
+    assertEquals(3, callCount.get(), "Should have exhausted all 3 attempts");
+
+    // Verify no temp files left behind
+    try (var stream = Files.list(tempDir)) {
+      assertEquals(0, stream.count(), "No temp files should remain after exhaustion");
+    } catch (IOException e) {
+      fail(e);
+    }
+  }
+
+  @Test
+  void noRetryOnNonRetryableStatus() {
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          callCount.incrementAndGet();
+          ex.sendResponseHeaders(404, -1);
+          ex.close();
+        });
+
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    assertThrows(CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
+
+    assertEquals(1, callCount.get(), "Non-retryable status should not trigger any retries");
   }
 
   @Test
