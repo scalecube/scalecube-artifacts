@@ -72,8 +72,13 @@ public record Repository(
         .resolve(name);
   }
 
+  private static String getProperty(Properties props, String name) {
+    final var value = props.getProperty(name);
+    return "@null".equals(value) ? null : value;
+  }
+
   private static File repoDir(Properties props) {
-    final var dir = props.getProperty("scalecube.artifacts.maven.repo.dir");
+    final var dir = getProperty(props, "scalecube.artifacts.maven.repo.dir");
     if (dir == null || dir.isEmpty()) {
       return Path.of(System.getProperty("user.home"), ".m2", "repository").toFile();
     }
@@ -85,7 +90,7 @@ public record Repository(
   }
 
   private static String repoId(Properties props) {
-    final var id = props.getProperty("scalecube.artifacts.maven.repo.id");
+    final var id = getProperty(props, "scalecube.artifacts.maven.repo.id");
     if (id == null || id.isEmpty()) {
       throw new IllegalArgumentException("repository id is missing or invalid");
     }
@@ -93,7 +98,7 @@ public record Repository(
   }
 
   private static String repoUrl(Properties props) {
-    final var url = props.getProperty("scalecube.artifacts.maven.repo.url");
+    final var url = getProperty(props, "scalecube.artifacts.maven.repo.url");
     if (url == null || url.isEmpty()) {
       throw new IllegalArgumentException("repository url is missing or invalid");
     }
@@ -101,23 +106,23 @@ public record Repository(
   }
 
   private static UpdatePolicy repoUpdatePolicy(Properties props) {
-    final var value = props.getProperty("scalecube.artifacts.maven.repo.updatePolicy");
+    final var value = getProperty(props, "scalecube.artifacts.maven.repo.updatePolicy");
     return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : UpdatePolicy.REMOTE;
   }
 
   private static int repoRetryMaxAttempts(Properties props) {
-    final var value = props.getProperty("scalecube.artifacts.maven.repo.retryMaxAttempts");
+    final var value = getProperty(props, "scalecube.artifacts.maven.repo.retryMaxAttempts");
     return value != null ? Integer.parseInt(value) : 10;
   }
 
   private static long repoRetryInitialDelayMs(Properties props) {
-    final var value = props.getProperty("scalecube.artifacts.maven.repo.retryInitialDelayMs");
+    final var value = getProperty(props, "scalecube.artifacts.maven.repo.retryInitialDelayMs");
     return value != null ? Long.parseLong(value) : 3000L;
   }
 
   private static String repoAuthorization(Properties props, File repoDir, String repoId) {
-    final var username = props.getProperty("scalecube.artifacts.maven.repo.username");
-    final var password = props.getProperty("scalecube.artifacts.maven.repo.password");
+    final var username = getProperty(props, "scalecube.artifacts.maven.repo.username");
+    final var password = getProperty(props, "scalecube.artifacts.maven.repo.password");
 
     String authorization;
     if ((username == null || username.isEmpty()) && (password == null || password.isEmpty())) {
@@ -162,10 +167,10 @@ public record Repository(
     }
   }
 
-  private static String unwrap(String value, Properties props) {
+  static String unwrap(String value, Properties props) {
     if (value != null && value.startsWith("${env.") && value.endsWith("}")) {
       final var varName = value.substring(6, value.length() - 1);
-      final var envValue = props.getProperty(varName);
+      final var envValue = getProperty(props, varName);
       if (envValue == null || envValue.isEmpty()) {
         throw new IllegalStateException(
             "Environment variable is missing or invalid (name=" + varName + ")");

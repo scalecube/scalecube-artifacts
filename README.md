@@ -86,7 +86,9 @@ Path jar = resolver.resolve("com.example:bar:1.0-SNAPSHOT").join();
 
 ## Configuration
 
-All settings are passed as `java.util.Properties` to `ArtifactResolverProvider.create()`.
+All settings are passed as `java.util.Properties` to `ArtifactResolverProvider.create()`. Any
+property set to `@null` is treated as not set (default applies), so a layered or templated config
+can unset an inherited value.
 
 ### Repository
 
