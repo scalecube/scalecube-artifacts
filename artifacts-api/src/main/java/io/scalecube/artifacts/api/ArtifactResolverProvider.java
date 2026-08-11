@@ -13,8 +13,8 @@ public interface ArtifactResolverProvider {
   /**
    * Creates new instance of {@link ArtifactResolver} based on the provided configuration.
    *
-   * @param props {@link Properties} object containing implementation-specific settings
+   * @param properties {@link Properties} object containing implementation-specific settings
    * @return configured {@link ArtifactResolver} instance
    */
-  ArtifactResolver create(Properties props);
+  ArtifactResolver create(Properties properties);
 }

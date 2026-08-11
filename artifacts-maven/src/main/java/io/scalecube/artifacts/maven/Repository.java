@@ -50,18 +50,18 @@ public record Repository(
         DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
   }
 
-  public static Repository newInstance(Properties props) {
-    final var id = repoId(props);
-    final var repoDir = repoDir(props);
+  public static Repository newInstance(Properties properties) {
+    final var id = repoId(properties);
+    final var repoDir = repoDir(properties);
 
     return new Repository(
         id,
-        repoUrl(props),
-        repoAuthorization(props, repoDir, id),
+        repoUrl(properties),
+        repoAuthorization(properties, repoDir, id),
         repoDir,
-        repoUpdatePolicy(props),
-        repoRetryMaxAttempts(props),
-        repoRetryInitialDelayMs(props));
+        repoUpdatePolicy(properties),
+        repoRetryMaxAttempts(properties),
+        repoRetryInitialDelayMs(properties));
   }
 
   public static URI remoteUri(Repository repository, String spec, String name) {
@@ -96,37 +96,37 @@ public record Repository(
         .resolve(name);
   }
 
-  private static String getProperty(Properties props, String name) {
-    final var value = props.getProperty(name);
+  private static String getProperty(Properties properties, String name) {
+    final var value = properties.getProperty(name);
     return "@null".equals(value) ? null : value;
   }
 
-  private static int getProperty(Properties props, String name, int defaultValue) {
-    final var value = getProperty(props, name);
+  private static int getProperty(Properties properties, String name, int defaultValue) {
+    final var value = getProperty(properties, name);
     return value != null ? Integer.parseInt(value) : defaultValue;
   }
 
-  private static long getProperty(Properties props, String name, long defaultValue) {
-    final var value = getProperty(props, name);
+  private static long getProperty(Properties properties, String name, long defaultValue) {
+    final var value = getProperty(properties, name);
     return value != null ? Long.parseLong(value) : defaultValue;
   }
 
   private static UpdatePolicy getProperty(
-      Properties props, String name, UpdatePolicy defaultValue) {
-    final var value = getProperty(props, name);
+      Properties properties, String name, UpdatePolicy defaultValue) {
+    final var value = getProperty(properties, name);
     return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : defaultValue;
   }
 
-  private static String requireProperty(Properties props, String name, String description) {
-    final var value = getProperty(props, name);
+  private static String requireProperty(Properties properties, String name, String description) {
+    final var value = getProperty(properties, name);
     if (value == null || value.isEmpty()) {
       throw new IllegalArgumentException(description + " is missing or invalid");
     }
     return value;
   }
 
-  private static File repoDir(Properties props) {
-    final var dir = getProperty(props, REPO_DIR_PROP_NAME);
+  private static File repoDir(Properties properties) {
+    final var dir = getProperty(properties, REPO_DIR_PROP_NAME);
     if (dir == null || dir.isEmpty()) {
       return Path.of(System.getProperty("user.home"), ".m2", "repository").toFile();
     }
@@ -137,35 +137,36 @@ public record Repository(
     }
   }
 
-  private static String repoId(Properties props) {
-    return requireProperty(props, REPO_ID_PROP_NAME, "repository id");
+  private static String repoId(Properties properties) {
+    return requireProperty(properties, REPO_ID_PROP_NAME, "repository id");
   }
 
-  private static String repoUrl(Properties props) {
-    return requireProperty(props, REPO_URL_PROP_NAME, "repository url");
+  private static String repoUrl(Properties properties) {
+    return requireProperty(properties, REPO_URL_PROP_NAME, "repository url");
   }
 
-  private static UpdatePolicy repoUpdatePolicy(Properties props) {
-    return getProperty(props, REPO_UPDATE_POLICY_PROP_NAME, DEFAULT_REPO_UPDATE_POLICY);
+  private static UpdatePolicy repoUpdatePolicy(Properties properties) {
+    return getProperty(properties, REPO_UPDATE_POLICY_PROP_NAME, DEFAULT_REPO_UPDATE_POLICY);
   }
 
-  private static int repoRetryMaxAttempts(Properties props) {
-    return getProperty(props, REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, DEFAULT_REPO_RETRY_MAX_ATTEMPTS);
-  }
-
-  private static long repoRetryInitialDelayMs(Properties props) {
+  private static int repoRetryMaxAttempts(Properties properties) {
     return getProperty(
-        props, REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
+        properties, REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, DEFAULT_REPO_RETRY_MAX_ATTEMPTS);
   }
 
-  private static String repoAuthorization(Properties props, File repoDir, String repoId) {
-    final var username = getProperty(props, REPO_USERNAME_PROP_NAME);
-    final var password = getProperty(props, REPO_PASSWORD_PROP_NAME);
+  private static long repoRetryInitialDelayMs(Properties properties) {
+    return getProperty(
+        properties, REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
+  }
+
+  private static String repoAuthorization(Properties properties, File repoDir, String repoId) {
+    final var username = getProperty(properties, REPO_USERNAME_PROP_NAME);
+    final var password = getProperty(properties, REPO_PASSWORD_PROP_NAME);
 
     String authorization;
     if ((username == null || username.isEmpty()) && (password == null || password.isEmpty())) {
       final var settings = Path.of(repoDir.getParent()).resolve("settings.xml");
-      authorization = "Basic " + encodeCredentialsFromSettings(repoId, settings, props);
+      authorization = "Basic " + encodeCredentialsFromSettings(repoId, settings, properties);
     } else {
       authorization = "Basic " + encodeCredentials(username, password);
     }
@@ -178,7 +179,8 @@ public record Repository(
         .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
   }
 
-  private static String encodeCredentialsFromSettings(String id, Path settings, Properties props) {
+  private static String encodeCredentialsFromSettings(
+      String id, Path settings, Properties properties) {
     if (Files.notExists(settings)) {
       throw new IllegalStateException(settings + " - not exist");
     }
@@ -196,8 +198,8 @@ public record Repository(
       }
 
       final var server = servers.item(0);
-      final var username = unwrap(xPath.evaluate("username", server), props);
-      final var password = unwrap(xPath.evaluate("password", server), props);
+      final var username = unwrap(xPath.evaluate("username", server), properties);
+      final var password = unwrap(xPath.evaluate("password", server), properties);
 
       return encodeCredentials(username, password);
     } catch (Exception e) {
@@ -205,10 +207,10 @@ public record Repository(
     }
   }
 
-  static String unwrap(String value, Properties props) {
+  static String unwrap(String value, Properties properties) {
     if (value != null && value.startsWith("${env.") && value.endsWith("}")) {
       final var varName = value.substring(6, value.length() - 1);
-      final var envValue = getProperty(props, varName);
+      final var envValue = getProperty(properties, varName);
       if (envValue == null || envValue.isEmpty()) {
         throw new IllegalStateException(
             "Environment variable is missing or invalid (name=" + varName + ")");

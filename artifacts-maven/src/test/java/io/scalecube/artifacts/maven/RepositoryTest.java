@@ -21,13 +21,13 @@ class RepositoryTest {
 
   @Test
   void testNullMarkerFallsBackToDefaults() {
-    final var props = credentialedProps();
-    props.setProperty(REPO_DIR_PROP_NAME, NULL_VALUE);
-    props.setProperty(REPO_UPDATE_POLICY_PROP_NAME, NULL_VALUE);
-    props.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, NULL_VALUE);
-    props.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, NULL_VALUE);
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_DIR_PROP_NAME, NULL_VALUE);
+    properties.setProperty(REPO_UPDATE_POLICY_PROP_NAME, NULL_VALUE);
+    properties.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, NULL_VALUE);
+    properties.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, NULL_VALUE);
 
-    final var repository = Repository.newInstance(props);
+    final var repository = Repository.newInstance(properties);
 
     assertEquals(
         Path.of(System.getProperty("user.home"), ".m2", "repository").toFile(),
@@ -51,12 +51,12 @@ class RepositoryTest {
 
   @Test
   void testExplicitValueWinsOverNullMarker() {
-    final var props = credentialedProps();
-    props.setProperty(REPO_UPDATE_POLICY_PROP_NAME, "local");
-    props.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, "3");
-    props.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, "100");
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_UPDATE_POLICY_PROP_NAME, "local");
+    properties.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, "3");
+    properties.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, "100");
 
-    final var repository = Repository.newInstance(props);
+    final var repository = Repository.newInstance(properties);
 
     assertEquals(UpdatePolicy.LOCAL, repository.repoUpdatePolicy(), "repoUpdatePolicy");
     assertEquals(3, repository.retryMaxAttempts(), "retryMaxAttempts");
@@ -65,36 +65,36 @@ class RepositoryTest {
 
   @Test
   void testNullMarkerOnRequiredIdFails() {
-    final var props = credentialedProps();
-    props.setProperty(REPO_ID_PROP_NAME, NULL_VALUE);
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_ID_PROP_NAME, NULL_VALUE);
 
-    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(props));
+    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(properties));
   }
 
   @Test
   void testNullMarkerOnRequiredUrlFails() {
-    final var props = credentialedProps();
-    props.setProperty(REPO_URL_PROP_NAME, NULL_VALUE);
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_URL_PROP_NAME, NULL_VALUE);
 
-    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(props));
+    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(properties));
   }
 
   @Test
   void testNullMarkerOnEnvPlaceholderFails() {
-    final var props = new Properties();
-    props.setProperty("GITHUB_TOKEN", NULL_VALUE);
+    final var properties = new Properties();
+    properties.setProperty("GITHUB_TOKEN", NULL_VALUE);
 
     assertThrows(
-        IllegalStateException.class, () -> Repository.unwrap("${env.GITHUB_TOKEN}", props));
+        IllegalStateException.class, () -> Repository.unwrap("${env.GITHUB_TOKEN}", properties));
   }
 
   private static Properties credentialedProps() {
-    final var props = new Properties();
-    props.setProperty(REPO_ID_PROP_NAME, "github");
-    props.setProperty(
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(
         REPO_URL_PROP_NAME, "https://maven.pkg.github.com/scalecube/scalecube-artifacts");
-    props.setProperty(REPO_USERNAME_PROP_NAME, "user");
-    props.setProperty(REPO_PASSWORD_PROP_NAME, "password");
-    return props;
+    properties.setProperty(REPO_USERNAME_PROP_NAME, "user");
+    properties.setProperty(REPO_PASSWORD_PROP_NAME, "password");
+    return properties;
   }
 }

@@ -7,7 +7,7 @@ import java.util.Properties;
 public class MavenResolverProvider implements ArtifactResolverProvider {
 
   @Override
-  public ArtifactResolver create(Properties props) {
-    return new MavenResolver(Repository.newInstance(props));
+  public ArtifactResolver create(Properties properties) {
+    return new MavenResolver(Repository.newInstance(properties));
   }
 }
