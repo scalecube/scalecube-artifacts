@@ -22,22 +22,46 @@ public record Repository(
     int retryMaxAttempts,
     long retryInitialDelayMs) {
 
+  public static final String REPO_DIR_PROP_NAME = "scalecube.artifacts.maven.repo.dir";
+  public static final String REPO_ID_PROP_NAME = "scalecube.artifacts.maven.repo.id";
+  public static final String REPO_URL_PROP_NAME = "scalecube.artifacts.maven.repo.url";
+  public static final String REPO_USERNAME_PROP_NAME = "scalecube.artifacts.maven.repo.username";
+  public static final String REPO_PASSWORD_PROP_NAME = "scalecube.artifacts.maven.repo.password";
+  public static final String REPO_UPDATE_POLICY_PROP_NAME =
+      "scalecube.artifacts.maven.repo.updatePolicy";
+  public static final String REPO_RETRY_MAX_ATTEMPTS_PROP_NAME =
+      "scalecube.artifacts.maven.repo.retryMaxAttempts";
+  public static final String REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME =
+      "scalecube.artifacts.maven.repo.retryInitialDelayMs";
+
+  public static final UpdatePolicy DEFAULT_REPO_UPDATE_POLICY = UpdatePolicy.REMOTE;
+  public static final int DEFAULT_REPO_RETRY_MAX_ATTEMPTS = 10;
+  public static final long DEFAULT_REPO_RETRY_INITIAL_DELAY_MS = 3000L;
+
   public Repository(
       String id, String url, String authz, File repoDir, UpdatePolicy repoUpdatePolicy) {
-    this(id, url, authz, repoDir, repoUpdatePolicy, 10, 3000L);
+    this(
+        id,
+        url,
+        authz,
+        repoDir,
+        repoUpdatePolicy,
+        DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
+        DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
   }
 
   public static Repository newInstance(Properties props) {
     final var id = repoId(props);
     final var repoDir = repoDir(props);
-    final var url = repoUrl(props);
-    final var authorization = repoAuthorization(props, repoDir, id);
-    final var updatePolicy = repoUpdatePolicy(props);
-    final var retryMaxAttempts = repoRetryMaxAttempts(props);
-    final var retryInitialDelayMs = repoRetryInitialDelayMs(props);
 
     return new Repository(
-        id, url, authorization, repoDir, updatePolicy, retryMaxAttempts, retryInitialDelayMs);
+        id,
+        repoUrl(props),
+        repoAuthorization(props, repoDir, id),
+        repoDir,
+        repoUpdatePolicy(props),
+        repoRetryMaxAttempts(props),
+        repoRetryInitialDelayMs(props));
   }
 
   public static URI remoteUri(Repository repository, String spec, String name) {
@@ -77,8 +101,32 @@ public record Repository(
     return "@null".equals(value) ? null : value;
   }
 
+  private static int getProperty(Properties props, String name, int defaultValue) {
+    final var value = getProperty(props, name);
+    return value != null ? Integer.parseInt(value) : defaultValue;
+  }
+
+  private static long getProperty(Properties props, String name, long defaultValue) {
+    final var value = getProperty(props, name);
+    return value != null ? Long.parseLong(value) : defaultValue;
+  }
+
+  private static UpdatePolicy getProperty(
+      Properties props, String name, UpdatePolicy defaultValue) {
+    final var value = getProperty(props, name);
+    return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : defaultValue;
+  }
+
+  private static String requireProperty(Properties props, String name, String description) {
+    final var value = getProperty(props, name);
+    if (value == null || value.isEmpty()) {
+      throw new IllegalArgumentException(description + " is missing or invalid");
+    }
+    return value;
+  }
+
   private static File repoDir(Properties props) {
-    final var dir = getProperty(props, "scalecube.artifacts.maven.repo.dir");
+    final var dir = getProperty(props, REPO_DIR_PROP_NAME);
     if (dir == null || dir.isEmpty()) {
       return Path.of(System.getProperty("user.home"), ".m2", "repository").toFile();
     }
@@ -90,39 +138,29 @@ public record Repository(
   }
 
   private static String repoId(Properties props) {
-    final var id = getProperty(props, "scalecube.artifacts.maven.repo.id");
-    if (id == null || id.isEmpty()) {
-      throw new IllegalArgumentException("repository id is missing or invalid");
-    }
-    return id;
+    return requireProperty(props, REPO_ID_PROP_NAME, "repository id");
   }
 
   private static String repoUrl(Properties props) {
-    final var url = getProperty(props, "scalecube.artifacts.maven.repo.url");
-    if (url == null || url.isEmpty()) {
-      throw new IllegalArgumentException("repository url is missing or invalid");
-    }
-    return url;
+    return requireProperty(props, REPO_URL_PROP_NAME, "repository url");
   }
 
   private static UpdatePolicy repoUpdatePolicy(Properties props) {
-    final var value = getProperty(props, "scalecube.artifacts.maven.repo.updatePolicy");
-    return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : UpdatePolicy.REMOTE;
+    return getProperty(props, REPO_UPDATE_POLICY_PROP_NAME, DEFAULT_REPO_UPDATE_POLICY);
   }
 
   private static int repoRetryMaxAttempts(Properties props) {
-    final var value = getProperty(props, "scalecube.artifacts.maven.repo.retryMaxAttempts");
-    return value != null ? Integer.parseInt(value) : 10;
+    return getProperty(props, REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, DEFAULT_REPO_RETRY_MAX_ATTEMPTS);
   }
 
   private static long repoRetryInitialDelayMs(Properties props) {
-    final var value = getProperty(props, "scalecube.artifacts.maven.repo.retryInitialDelayMs");
-    return value != null ? Long.parseLong(value) : 3000L;
+    return getProperty(
+        props, REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
   }
 
   private static String repoAuthorization(Properties props, File repoDir, String repoId) {
-    final var username = getProperty(props, "scalecube.artifacts.maven.repo.username");
-    final var password = getProperty(props, "scalecube.artifacts.maven.repo.password");
+    final var username = getProperty(props, REPO_USERNAME_PROP_NAME);
+    final var password = getProperty(props, REPO_PASSWORD_PROP_NAME);
 
     String authorization;
     if ((username == null || username.isEmpty()) && (password == null || password.isEmpty())) {
