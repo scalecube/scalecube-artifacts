@@ -2,6 +2,7 @@ package io.scalecube.artifacts.maven;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,7 +104,7 @@ class JarResolverTest {
   }
 
   @Test
-  void shouldResolveSnapshotAndCreateAlias() throws Exception {
+  void shouldResolveSnapshotToTimestampedFileWithoutAlias() throws Exception {
     String timestamp = "20231010.120000";
     String build = "1";
     String version = "1.0-SNAPSHOT";
@@ -121,10 +122,9 @@ class JarResolverTest {
     // Execute
     Path result = jarResolver.resolveJar(repository, metadata).join();
 
-    // Verify: -SNAPSHOT.jar alias was created
+    // Verify: the base-named file is Maven's slot for `mvn install`, so resolution must not write it
     Path alias = result.resolveSibling("bar-" + version + ".jar");
-    assertTrue(Files.exists(alias), "Snapshot alias should be created");
-    assertArrayEquals(jarContent, Files.readAllBytes(alias));
+    assertFalse(Files.exists(alias), "Resolution must not write a -SNAPSHOT.jar alias");
 
     // Verify: result is the timestamped jar
     Path timestamped = result.resolveSibling("bar-" + timestampedVersion + ".jar");
@@ -179,8 +179,7 @@ class JarResolverTest {
     Path result = jarResolver.resolveJar(repository, metadata).join();
 
     Path alias = result.resolveSibling("scalecube-my-artifact-" + version + ".jar");
-    assertTrue(Files.exists(alias), "Snapshot alias should be created");
-    assertArrayEquals(jarContent, Files.readAllBytes(alias));
+    assertFalse(Files.exists(alias), "Resolution must not write a -SNAPSHOT.jar alias");
 
     Path timestamped =
         result.resolveSibling("scalecube-my-artifact-" + timestampedVersion + ".jar");

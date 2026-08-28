@@ -12,10 +12,13 @@ SHA-1 checksum validation, and configurable update policies.
 ## Features
 
 - Resolves release and SNAPSHOT artifacts (including correct timestamped filenames for SNAPSHOTs)
+- Honours Maven's `localCopy` rule: a SNAPSHOT installed by `mvn install` wins over any remote build
 - Async HTTP/2 downloads via Java 11 `HttpClient`
-- SHA-1 checksum validation after every download
+- SHA-1 validation after every download, and again before serving a cached file
+- Concurrency-safe: every published file is a single atomic rename, so parallel resolutions of the
+  same coordinate cannot observe a partial file
 - Local cache awareness with configurable update policy (`REMOTE` vs `LOCAL`)
-- Automatic retry with exponential back-off
+- Automatic retry with exponential back-off, covering both metadata and jar
 - Credentials from inline properties or `~/.m2/settings.xml` (with `${env.VAR}` interpolation)
 - Zero runtime dependencies beyond the JDK
 
@@ -76,13 +79,30 @@ var resolver = provider.create(props);
 
 ### SNAPSHOT resolution
 
-SNAPSHOT coordinates are resolved to the latest timestamped version from remote metadata and
-downloaded as both the timestamped file and a stable `-SNAPSHOT.jar` alias:
+A SNAPSHOT coordinate resolves to the latest timestamped build named by the remote metadata, and the
+returned path is that timestamped file:
 
 ```java
-// Downloads bar-1.0-20250309.141500-23.jar and aliases it to bar-1.0-SNAPSHOT.jar
+// Downloads and returns bar-1.0-20250309.141500-23.jar
 Path jar = resolver.resolve("com.example:bar:1.0-SNAPSHOT").join();
 ```
+
+Nothing here ever writes the base-named `bar-1.0-SNAPSHOT.jar`. That name is Maven's slot for a
+build produced by `mvn install`, and writing it would both destroy a developer's local build and
+make two concurrent resolutions of the same coordinate race on one path.
+
+That also gives you the behaviour you want when both exist. If `mvn install` has put
+`bar-1.0-SNAPSHOT.jar` in the local repository - marked `<localCopy>true</localCopy>` in
+`maven-metadata-local.xml` - resolution returns *that* file and never touches the network, which is
+Maven's own precedence rule:
+
+```java
+// -> ~/.m2/repository/com/example/bar/1.0-SNAPSHOT/bar-1.0-SNAPSHOT.jar, no HTTP request
+Path jar = resolver.resolve("com.example:bar:1.0-SNAPSHOT").join();
+```
+
+Releases skip metadata entirely: a Maven repository publishes no version-level `maven-metadata.xml`
+for a release, and the file name follows from the coordinate.
 
 ## Configuration
 
@@ -102,9 +122,15 @@ can unset an inherited value.
   directory. Artifacts are stored under the standard Maven layout
   (`<groupId>/<artifactId>/<version>/`).
 
+- `scalecube.artifacts.maven.repo.settings` `(string: "~/.m2/settings.xml")` – Where to read
+  `<server>` credentials from. Independent of `repo.dir`, so pointing the cache at a scratch
+  directory does not move the settings lookup with it.
+
 - `scalecube.artifacts.maven.repo.updatePolicy` `(string: "REMOTE")` – Controls when the
-  remote is consulted. `REMOTE` always fetches and validates metadata before serving from
-  cache. `LOCAL` serves from the local cache only and throws if the artifact is absent.
+  remote is consulted. `REMOTE` prefers a locally installed SNAPSHOT, and otherwise fetches
+  metadata to learn which build to serve or download. `LOCAL` never touches the network: it
+  serves the locally installed build, else the newest build already downloaded, and throws if
+  there is neither.
 
 ### Retry
 
@@ -124,6 +150,11 @@ can unset an inherited value.
 - `scalecube.artifacts.maven.repo.password` `(string: "")` – Password or token for HTTP
   Basic auth. If omitted together with `username`, credentials are looked up in
   `~/.m2/settings.xml` by the repo `id`.
+
+A missing settings file, or one with no matching `<server>`, is not an error: requests are made
+anonymously, which is correct for a public repository and harmless for an artifact already in the
+local cache. A `<server>` whose `${env.VAR}` placeholder cannot be expanded *is* an error, since
+that is a misconfiguration rather than an absent credential.
 
 When credentials come from `settings.xml`, placeholders in the form `${env.VAR_NAME}` are
 resolved from the same `Properties` object passed to the provider:

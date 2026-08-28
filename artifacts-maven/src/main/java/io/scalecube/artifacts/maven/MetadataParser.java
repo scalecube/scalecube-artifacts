@@ -90,21 +90,37 @@ public class MetadataParser {
                 break;
 
               case "latest":
-                metadata.versioning().latest(text);
+                if (metadata.versioning() != null) {
+                  metadata.versioning().latest(text);
+                }
                 break;
               case "release":
-                metadata.versioning().release(text);
+                if (metadata.versioning() != null) {
+                  metadata.versioning().release(text);
+                }
                 break;
               case "lastUpdated":
-                metadata.versioning().lastUpdated(text);
+                if (metadata.versioning() != null) {
+                  metadata.versioning().lastUpdated(text);
+                }
                 break;
 
               case "timestamp":
-                metadata.versioning().snapshot().timestamp(text);
+                if (snapshot(metadata) != null) {
+                  snapshot(metadata).timestamp(text);
+                }
                 break;
 
               case "buildNumber":
-                metadata.versioning().snapshot().buildNumber(text);
+                if (snapshot(metadata) != null) {
+                  snapshot(metadata).buildNumber(text);
+                }
+                break;
+
+              case "localCopy":
+                if (snapshot(metadata) != null) {
+                  snapshot(metadata).localCopy(Boolean.parseBoolean(text));
+                }
                 break;
 
               case "extension":
@@ -144,5 +160,9 @@ public class MetadataParser {
     }
 
     return metadata;
+  }
+
+  private static Metadata.Snapshot snapshot(Metadata metadata) {
+    return metadata.versioning() == null ? null : metadata.versioning().snapshot();
   }
 }

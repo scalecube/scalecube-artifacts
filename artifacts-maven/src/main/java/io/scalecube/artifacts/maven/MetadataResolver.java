@@ -2,10 +2,12 @@ package io.scalecube.artifacts.maven;
 
 import static io.scalecube.artifacts.maven.Repository.localFile;
 import static io.scalecube.artifacts.maven.Repository.remoteUri;
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -17,6 +19,8 @@ import java.util.concurrent.CompletionException;
  * snapshot timestamps from both local and remote sources.
  */
 public class MetadataResolver {
+
+  private static final System.Logger LOGGER = System.getLogger(MetadataResolver.class.getName());
 
   private final Fetcher fetcher;
 
@@ -74,16 +78,29 @@ public class MetadataResolver {
                     throw new IOException("Checksum mismatch for maven-metadata");
                   }
 
-                  Files.move(tmp, target, REPLACE_EXISTING);
-                  Files.move(tmpSha1, targetSha1, REPLACE_EXISTING);
-
-                  try (final var in = new FileInputStream(target.toFile())) {
-                    return MetadataParser.parseMetadata(in);
+                  // Parse before publishing: the caller only needs the parsed value, and a
+                  // concurrent resolution of the same coordinate must not be able to observe this
+                  // file half-written. ATOMIC_MOVE makes publishing a single rename, so two
+                  // publishers cannot race on unlinking the target.
+                  final Metadata metadata;
+                  try (final var in = Files.newInputStream(tmp)) {
+                    metadata = MetadataParser.parseMetadata(in);
                   }
+
+                  Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
+                  Files.move(tmpSha1, targetSha1, REPLACE_EXISTING, ATOMIC_MOVE);
+
+                  return metadata;
                 } catch (Exception e) {
                   deleteIfExists(tmp);
                   deleteIfExists(tmpSha1);
                   throw new CompletionException(e);
+                }
+              })
+          .whenComplete(
+              (metadata, ex) -> {
+                if (ex != null) {
+                  LOGGER.log(Level.WARNING, () -> "Cannot resolve metadata " + uri);
                 }
               });
     } catch (Exception e) {

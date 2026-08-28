@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -18,6 +19,7 @@ import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -46,19 +48,22 @@ class MavenResolverTest {
 
     String spec = "com.foo:bar:1.2.3";
 
-    Metadata meta = new Metadata().groupId("com.foo").artifactId("bar").version("1.2.3");
-    when(metadataResolver.resolveRemote(repository, spec))
-        .thenReturn(CompletableFuture.completedFuture(meta));
-
     Path fakeJar = tempCacheDir.resolve("fake.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any()))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(fakeJar, result);
-    verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver).resolveJar(repository, meta);
+    // A release has no version-level maven-metadata.xml in a Maven repository, so asking for one
+    // only buys a 404; the file name follows from the coordinate alone.
+    verifyNoInteractions(metadataResolver);
+
+    ArgumentCaptor<Metadata> captor = ArgumentCaptor.forClass(Metadata.class);
+    verify(jarResolver).resolveJar(eq(repository), captor.capture());
+    assertEquals("com.foo", captor.getValue().groupId());
+    assertEquals("bar", captor.getValue().artifactId());
+    assertEquals("1.2.3", captor.getValue().version());
   }
 
   @Test
@@ -103,7 +108,7 @@ class MavenResolverTest {
   }
 
   @Test
-  void resolve_snapshot_remotePolicy_returnsLocalWhenMetadataUnchanged() {
+  void resolve_snapshot_remotePolicy_locallyInstalledBuildWinsOverRemote() {
     Repository repository =
         new Repository(
             "central",
@@ -116,33 +121,21 @@ class MavenResolverTest {
 
     String spec = "com.foo:bar:1.0-SNAPSHOT";
 
-    Metadata sameMeta = createSnapshotMetadata("20231010120000", "20231010.120000", "5");
-
-    when(metadataResolver.getCurrent(repository, spec)).thenReturn(sameMeta);
-    when(metadataResolver.resolveRemote(repository, spec))
-        .thenReturn(CompletableFuture.completedFuture(sameMeta));
-
-    Path localJar = tempCacheDir.resolve("bar-1.0-20231010.120000-5.jar");
-
-    // Critical: make the file "exist" in the eyes of Files.exists()
-    when(jarResolver.getLocalJar(repository, spec)).thenReturn(localJar);
-    when(jarResolver.resolveLocalJar(repository, spec)).thenReturn(localJar);
-
-    // Simulate that the JAR physically exists
-    // Option A: actually create empty file (realistic)
+    // What `mvn install` produced: Maven's localCopy rule makes it win over any remote build, which
+    // is what lets a developer build a service locally and run a suite against that build.
+    Path installedJar = tempCacheDir.resolve("bar-1.0-SNAPSHOT.jar");
     try {
-      Files.createFile(localJar);
+      Files.createFile(installedJar);
     } catch (IOException e) {
       fail("Cannot create test file", e);
     }
+    when(jarResolver.getInstalledJar(repository, spec)).thenReturn(installedJar);
 
-    // Act
     Path result = mavenResolver.resolve(spec).join();
 
-    // Assert
-    assertEquals(localJar, result);
-    verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver, never()).resolveJar(any(), any()); // ← now passes
+    assertEquals(installedJar, result);
+    verifyNoInteractions(metadataResolver);
+    verify(jarResolver, never()).resolveJar(any(), any());
   }
 
   @Test
@@ -392,13 +385,9 @@ class MavenResolverTest {
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
     String spec = "com.foo:bar:1.2.3";
-    Metadata meta = new Metadata().groupId("com.foo").artifactId("bar").version("1.2.3");
-
-    when(metadataResolver.resolveRemote(repository, spec))
-        .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.2.3.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any()))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
@@ -406,8 +395,7 @@ class MavenResolverTest {
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(fakeJar, result);
-    verify(metadataResolver, times(2)).resolveRemote(repository, spec);
-    verify(jarResolver, times(2)).resolveJar(repository, meta);
+    verify(jarResolver, times(2)).resolveJar(eq(repository), any());
   }
 
   @Test
@@ -425,18 +413,13 @@ class MavenResolverTest {
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
     String spec = "com.foo:bar:1.2.3";
-    Metadata meta = new Metadata().groupId("com.foo").artifactId("bar").version("1.2.3");
 
-    when(metadataResolver.resolveRemote(repository, spec))
-        .thenReturn(CompletableFuture.completedFuture(meta));
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any()))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))));
 
     assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
-
-    verify(metadataResolver, times(3)).resolveRemote(repository, spec);
-    verify(jarResolver, times(3)).resolveJar(repository, meta);
+    verify(jarResolver, times(3)).resolveJar(eq(repository), any());
   }
 
   @Test
