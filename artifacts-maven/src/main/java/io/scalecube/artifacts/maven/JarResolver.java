@@ -125,8 +125,7 @@ public class JarResolver {
     final var jar = getLocalJar(repository, spec);
 
     if (jar == null) {
-      throw new IllegalStateException(
-          "No local copy of " + spec + " in " + repository.repoDir());
+      throw new IllegalStateException("No local copy of " + spec + " in " + repository.repoDir());
     }
 
     return jar;

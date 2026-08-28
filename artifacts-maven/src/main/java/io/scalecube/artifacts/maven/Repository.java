@@ -187,8 +187,7 @@ public record Repository(
         .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
   }
 
-  private static String credentialsFromSettings(
-      String id, Path settings, Properties properties) {
+  private static String credentialsFromSettings(String id, Path settings, Properties properties) {
     if (Files.notExists(settings)) {
       LOGGER.log(Level.DEBUG, () -> settings + " does not exist, continuing without credentials");
       return null;
@@ -200,8 +199,7 @@ public record Repository(
 
       // Direct-child navigation rather than an XPath predicate built from `id`: the shape is fixed,
       // and a repository id must never be able to steer the query.
-      for (final var server :
-          children(child(document.getDocumentElement(), "servers"), "server")) {
+      for (final var server : children(child(document.getDocumentElement(), "servers"), "server")) {
         if (!id.equals(unwrap(text(server, "id"), properties))) {
           continue;
         }

@@ -122,7 +122,7 @@ class JarResolverTest {
     // Execute
     Path result = jarResolver.resolveJar(repository, metadata).join();
 
-    // Verify: the base-named file is Maven's slot for `mvn install`, so resolution must not write it
+    // Verify: base-named file is Maven's slot for `mvn install`, so resolution must not write it
     Path alias = result.resolveSibling("bar-" + version + ".jar");
     assertFalse(Files.exists(alias), "Resolution must not write a -SNAPSHOT.jar alias");
 

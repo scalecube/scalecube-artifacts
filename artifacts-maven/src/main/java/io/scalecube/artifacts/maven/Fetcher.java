@@ -94,8 +94,7 @@ public class Fetcher {
     }
 
     return client
-        .sendAsync(
-            request.build(), BodyHandlers.ofFile(tmp, CREATE, WRITE, TRUNCATE_EXISTING))
+        .sendAsync(request.build(), BodyHandlers.ofFile(tmp, CREATE, WRITE, TRUNCATE_EXISTING))
         .handle(
             (response, ex) -> {
               if (ex != null || response.statusCode() != 200) {

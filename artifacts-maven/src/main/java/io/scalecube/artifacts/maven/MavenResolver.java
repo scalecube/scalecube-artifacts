@@ -88,8 +88,7 @@ public class MavenResolver implements ArtifactResolver {
   }
 
   private CompletableFuture<Path> doResolve(Coordinates coordinates, int attempt) {
-    return jar(coordinates)
-        .exceptionallyCompose(ex -> retryOn404(ex, coordinates, attempt));
+    return jar(coordinates).exceptionallyCompose(ex -> retryOn404(ex, coordinates, attempt));
   }
 
   private CompletableFuture<Path> jar(Coordinates coordinates) {

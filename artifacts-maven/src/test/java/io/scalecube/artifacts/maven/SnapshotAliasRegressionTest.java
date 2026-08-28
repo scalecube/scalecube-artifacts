@@ -48,6 +48,7 @@ class SnapshotAliasRegressionTest {
 
   /** Big enough that the non-atomic alias copy takes long enough to lose the race. */
   private static final int ENTRY_COUNT = 400;
+
   private static final int ENTRY_SIZE = 64 * 1024;
 
   @TempDir private Path m2Repo;
@@ -230,7 +231,8 @@ class SnapshotAliasRegressionTest {
     final var bytes = new ByteArrayOutputStream();
     try (final var out = new JarOutputStream(bytes)) {
       for (int i = 0; i < ENTRY_COUNT; i++) {
-        final var entry = new ZipEntry("io/scalecube/generated/" + marker + "/Class" + i + ".class");
+        final var entry =
+            new ZipEntry("io/scalecube/generated/" + marker + "/Class" + i + ".class");
         out.putNextEntry(entry);
         out.write(payload);
         out.closeEntry();
