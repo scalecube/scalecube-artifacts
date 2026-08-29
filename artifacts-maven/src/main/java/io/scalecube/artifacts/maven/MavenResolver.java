@@ -78,7 +78,7 @@ public class MavenResolver implements ArtifactResolver {
   private CompletableFuture<Path> jar(Coordinates coordinates) {
     return metadataResolver
         .resolveRemote(repository, coordinates.spec())
-        .thenCompose(metadata -> jarResolver.resolveJar(repository, metadata));
+        .thenCompose(metadata -> jarResolver.resolveJar(repository, coordinates, metadata));
   }
 
   /**

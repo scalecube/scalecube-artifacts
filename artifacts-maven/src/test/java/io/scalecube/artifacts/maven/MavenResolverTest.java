@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -51,14 +52,14 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("fake.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(fakeJar, result);
     verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver).resolveJar(repository, meta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
@@ -92,14 +93,14 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(newJar, result);
     verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver).resolveJar(repository, remoteMeta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   @Test
@@ -130,7 +131,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(metadata));
 
     Path remoteJar = tempCacheDir.resolve("bar-1.0-20260225.142030-45.jar");
-    when(jarResolver.resolveJar(repository, metadata))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(metadata)))
         .thenReturn(CompletableFuture.completedFuture(remoteJar));
 
     Path result = mavenResolver.resolve(spec).join();
@@ -169,13 +170,13 @@ class MavenResolverTest {
     when(jarResolver.resolveLocalJar(repository, spec)).thenReturn(localJar);
 
     Path downloadedJar = tempCacheDir.resolve("downloaded.jar");
-    when(jarResolver.resolveJar(repository, sameMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(sameMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(downloadedJar, result);
-    verify(jarResolver).resolveJar(repository, sameMeta); // fallback download
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(sameMeta)); // fallback download
   }
 
   @Test
@@ -224,7 +225,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     // Act
@@ -232,7 +233,7 @@ class MavenResolverTest {
 
     // Assert
     assertEquals(newJar, result);
-    verify(jarResolver).resolveJar(repository, remoteMeta); // download triggered
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta)); // download triggered
   }
 
   @Test
@@ -256,7 +257,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path downloadedJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
@@ -264,7 +265,7 @@ class MavenResolverTest {
 
     // Assert
     assertEquals(downloadedJar, result);
-    verify(jarResolver).resolveJar(repository, remoteMeta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   @Test
@@ -292,7 +293,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path downloadedJar = tempCacheDir.resolve("some.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
@@ -328,7 +329,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     // Act
@@ -362,14 +363,14 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(emptyMeta));
 
     Path downloadedJar = tempCacheDir.resolve("bar-1.0-some-timestamp.jar");
-    when(jarResolver.resolveJar(any(), any()))
+    when(jarResolver.resolveJar(any(), any(), any()))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
     Path result = mavenResolver.resolve(spec).join();
 
     // Assert
-    verify(jarResolver).resolveJar(any(), any()); // fallback download
+    verify(jarResolver).resolveJar(any(), any(), any()); // fallback download
   }
 
   @Test
@@ -393,7 +394,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.2.3.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
@@ -402,7 +403,7 @@ class MavenResolverTest {
 
     assertEquals(fakeJar, result);
     verify(metadataResolver, times(2)).resolveRemote(repository, spec);
-    verify(jarResolver, times(2)).resolveJar(repository, meta);
+    verify(jarResolver, times(2)).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
@@ -424,14 +425,14 @@ class MavenResolverTest {
 
     when(metadataResolver.resolveRemote(repository, spec))
         .thenReturn(CompletableFuture.completedFuture(meta));
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))));
 
     assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
 
     verify(metadataResolver, times(3)).resolveRemote(repository, spec);
-    verify(jarResolver, times(3)).resolveJar(repository, meta);
+    verify(jarResolver, times(3)).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
@@ -456,7 +457,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
@@ -465,7 +466,7 @@ class MavenResolverTest {
 
     assertEquals(fakeJar, result);
     verify(metadataResolver, times(2)).resolveRemote(repository, spec);
-    verify(jarResolver, times(2)).resolveJar(repository, remoteMeta);
+    verify(jarResolver, times(2)).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   private Metadata createSnapshotMetadata(
@@ -503,7 +504,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.0-20231010.120000-5.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
 
     Path result = mavenResolver.resolve(spec).join();
@@ -534,6 +535,6 @@ class MavenResolverTest {
 
     assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
     verify(metadataResolver, times(3)).resolveRemote(repository, spec);
-    verify(jarResolver, never()).resolveJar(any(), any());
+    verify(jarResolver, never()).resolveJar(any(), any(), any());
   }
 }

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.regex.Pattern;
 
 /**
  * Component that manages local storage of JAR files within the maven repository structure. Handles
@@ -26,6 +27,8 @@ public class JarResolver {
 
   private static final System.Logger LOGGER = System.getLogger(JarResolver.class.getName());
 
+  private static final Pattern VERSION_TOKEN = Pattern.compile("[A-Za-z0-9._-]+");
+
   private final Fetcher fetcher;
 
   public JarResolver(Fetcher fetcher) {
@@ -33,21 +36,25 @@ public class JarResolver {
   }
 
   /**
-   * Resolves the JAR described by the metadata. Serves it from the local repository when that exact
-   * build is already there and its checksum matches, downloads it otherwise, and publishes the
-   * download with an atomic move.
+   * Resolves the JAR for the requested coordinates. Serves it from the local repository when that
+   * exact build is already there and its checksum matches, downloads it otherwise, and publishes
+   * the download with an atomic move.
+   *
+   * <p>The local path is built from the requested coordinates, never from the downloaded metadata.
+   * Metadata only supplies the timestamp and build number of the snapshot build to fetch, and those
+   * are checked to be plain tokens, so nothing in the remote response can choose where a file is
+   * written.
    *
    * @param repository artifact repository
+   * @param coordinates requested artifact coordinates
    * @param metadata artifact metadata
    * @return future completing with the final local {@link Path} of the JAR
    */
-  public CompletableFuture<Path> resolveJar(Repository repository, Metadata metadata) {
+  public CompletableFuture<Path> resolveJar(
+      Repository repository, Coordinates coordinates, Metadata metadata) {
     try {
-      final var groupId = metadata.groupId();
-      final var artifactId = metadata.artifactId();
-      final var version = getVersion(metadata); // e.g., "1.2.3" or "2.1.0-SNAPSHOT"
-      final var spec = String.join(":", groupId, artifactId, version);
-      final var filename = getFilename(metadata, artifactId, version);
+      final var spec = coordinates.spec();
+      final var filename = coordinates.fileName(resolvedVersion(coordinates, metadata));
 
       final var target = localFile(repository, spec, filename);
       final var targetSha1 = localFile(repository, spec, filename + ".sha1");
@@ -171,42 +178,39 @@ public class JarResolver {
     }
   }
 
-  private static String getVersion(Metadata metadata) {
-    // Snapshot-level Metadata
-    if (metadata.version() != null) {
-      return metadata.version();
-    }
-
-    // GA-level Metadata
-    if (metadata.versioning() != null) {
-      if (metadata.versioning().release() != null) {
-        return metadata.versioning().release();
-      }
-      if (metadata.versioning().latest() != null) {
-        return metadata.versioning().latest();
-      }
-    }
-
-    throw new IllegalArgumentException(
-        "Cannot resolve version for artifactId=" + metadata.artifactId());
-  }
-
-  private static String getFilename(Metadata metadata, String artifactId, String version) {
+  /**
+   * Returns the version to fetch: the timestamped build named by the snapshot metadata, or the
+   * requested version when the metadata names no snapshot build. The base version always comes from
+   * the requested coordinates, so only the timestamp and build number come off the wire.
+   */
+  private static String resolvedVersion(Coordinates coordinates, Metadata metadata) {
     final var snapshot = metadata.versioning() == null ? null : metadata.versioning().snapshot();
 
-    if (snapshot != null && snapshot.timestamp() != null && snapshot.buildNumber() != null) {
-      // Construct the timestamped name, e.g. 2.1.0-20260225.142030-45
-      final var timestampedVersion =
-          version.replace("-SNAPSHOT", "")
-              + "-"
-              + snapshot.timestamp()
-              + "-"
-              + snapshot.buildNumber();
-      return artifactId + "-" + timestampedVersion + ".jar";
+    if (coordinates.snapshot()
+        && snapshot != null
+        && snapshot.timestamp() != null
+        && snapshot.buildNumber() != null) {
+      // e.g. 2.1.0-20260225.142030-45
+      return coordinates.baseVersion()
+          + "-"
+          + requireToken(snapshot.timestamp(), "timestamp")
+          + "-"
+          + requireToken(snapshot.buildNumber(), "buildNumber");
     }
 
-    // Standard GA Release name
-    return artifactId + "-" + version + ".jar";
+    return coordinates.version();
+  }
+
+  /**
+   * Rejects anything that is not a plain version token. A path separator or a {@code ..} segment
+   * here would escape the artifact directory, so a malformed or hostile metadata response cannot
+   * choose the file that gets written.
+   */
+  private static String requireToken(String value, String name) {
+    if (!VERSION_TOKEN.matcher(value).matches()) {
+      throw new IllegalArgumentException("Invalid " + name + " in metadata: " + value);
+    }
+    return value;
   }
 
   private static boolean isReadable(Path path) {

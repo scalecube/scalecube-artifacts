@@ -3,6 +3,7 @@ package io.scalecube.artifacts.maven;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,7 +58,10 @@ class JarResolverTest {
     // Execute
     Path result =
         jarResolver
-            .resolveJar(repository, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+            .resolveJar(
+                repository,
+                Coordinates.parse("com.foo:bar:1.0"),
+                newMetadata("com.foo", "bar", "1.0", "20231010120000"))
             .join();
 
     // Verify
@@ -91,7 +95,10 @@ class JarResolverTest {
         CompletionException.class,
         () ->
             jarResolver
-                .resolveJar(repository, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+                .resolveJar(
+                repository,
+                Coordinates.parse("com.foo:bar:1.0"),
+                newMetadata("com.foo", "bar", "1.0", "20231010120000"))
                 .join());
 
     // Verify
@@ -120,7 +127,11 @@ class JarResolverTest {
                     .snapshot(new Metadata.Snapshot().timestamp(timestamp).buildNumber(build)));
 
     // Execute
-    Path result = jarResolver.resolveJar(repository, metadata).join();
+    Path result =
+        jarResolver
+            .resolveJar(
+                repository, Coordinates.parse("com.foo:bar:" + version), metadata)
+            .join();
 
     // Verify: base-named file is Maven's slot for `mvn install`, so resolution must not write it
     Path alias = result.resolveSibling("bar-" + version + ".jar");
@@ -143,6 +154,7 @@ class JarResolverTest {
         jarResolver
             .resolveJar(
                 repository,
+                Coordinates.parse("io.scalecube.my-group:scalecube-my-artifact:1.0"),
                 newMetadata(
                     "io.scalecube.my-group", "scalecube-my-artifact", "1.0", "20231010120000"))
             .join();
@@ -176,7 +188,13 @@ class JarResolverTest {
                 new Metadata.Versioning()
                     .snapshot(new Metadata.Snapshot().timestamp(timestamp).buildNumber(build)));
 
-    Path result = jarResolver.resolveJar(repository, metadata).join();
+    Path result =
+        jarResolver
+            .resolveJar(
+                repository,
+                Coordinates.parse("io.scalecube.my-group:scalecube-my-artifact:" + version),
+                metadata)
+            .join();
 
     Path alias = result.resolveSibling("scalecube-my-artifact-" + version + ".jar");
     assertFalse(Files.exists(alias), "Resolution must not write a -SNAPSHOT.jar alias");
@@ -204,7 +222,12 @@ class JarResolverTest {
     mockRemoteJar("/com/foo/bar/1.0/bar-1.0.jar", newContent);
 
     // Execute
-    jarResolver.resolveJar(repository, newMetadata("com.foo", "bar", "1.0", "2023")).join();
+    jarResolver
+        .resolveJar(
+            repository,
+            Coordinates.parse("com.foo:bar:1.0"),
+            newMetadata("com.foo", "bar", "1.0", "2023"))
+        .join();
 
     // Verify
     assertArrayEquals(newContent, Files.readAllBytes(finalJar));
@@ -221,7 +244,10 @@ class JarResolverTest {
     // No remote context registered: any download attempt would fail the request.
     Path result =
         jarResolver
-            .resolveJar(repository, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+            .resolveJar(
+                repository,
+                Coordinates.parse("com.foo:bar:1.0"),
+                newMetadata("com.foo", "bar", "1.0", "20231010120000"))
             .join();
 
     assertEquals(dir.resolve("bar-1.0.jar"), result);
@@ -249,7 +275,10 @@ class JarResolverTest {
     // No .sha1 beside it and no remote context: only the disabled check lets this succeed.
     Path result =
         jarResolver
-            .resolveJar(noVerify, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+            .resolveJar(
+                noVerify,
+                Coordinates.parse("com.foo:bar:1.0"),
+                newMetadata("com.foo", "bar", "1.0", "20231010120000"))
             .join();
 
     assertArrayEquals(cached, Files.readAllBytes(result));
@@ -299,6 +328,76 @@ class JarResolverTest {
     assertThrows(
         IllegalStateException.class,
         () -> jarResolver.resolveLocalJar(repository, "com.foo:bar:1.0-SNAPSHOT"));
+  }
+
+  @Test
+  void hostileMetadataCannotChooseTheWritePath() throws Exception {
+    byte[] jarContent = "payload".getBytes();
+    mockRemoteJar("/com/foo/bar/1.0-SNAPSHOT/bar-1.0-20231010.120000-1.jar", jarContent);
+
+    // The remote answers with coordinates that are not the ones we asked for. The reviewer's case:
+    // it used to write to repoDir/com/1.0-SNAPSHOT/ instead of repoDir/com/foo/bar/1.0-SNAPSHOT/.
+    Metadata hostile =
+        newMetadata("com", "1.0-SNAPSHOT", "bar", "20231010120000")
+            .versioning(
+                new Metadata.Versioning()
+                    .snapshot(
+                        new Metadata.Snapshot().timestamp("20231010.120000").buildNumber("1")));
+
+    Path result =
+        jarResolver
+            .resolveJar(repository, Coordinates.parse("com.foo:bar:1.0-SNAPSHOT"), hostile)
+            .join();
+
+    assertEquals(
+        m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT").normalize(),
+        result.getParent().normalize(),
+        "path must follow the requested coordinates, not the metadata");
+    assertArrayEquals(jarContent, Files.readAllBytes(result));
+  }
+
+  @Test
+  void traversalInMetadataTimestampIsRejected() {
+    Metadata hostile =
+        newMetadata("com.foo", "bar", "1.0-SNAPSHOT", "20231010120000")
+            .versioning(
+                new Metadata.Versioning()
+                    .snapshot(
+                        new Metadata.Snapshot()
+                            .timestamp("../../../../etc/evil")
+                            .buildNumber("1")));
+
+    final var ex =
+        assertThrows(
+            CompletionException.class,
+            () ->
+                jarResolver
+                    .resolveJar(repository, Coordinates.parse("com.foo:bar:1.0-SNAPSHOT"), hostile)
+                    .join());
+
+    assertInstanceOf(IllegalArgumentException.class, ex.getCause(), "cause");
+  }
+
+  @Test
+  void traversalInBuildNumberIsRejected() {
+    Metadata hostile =
+        newMetadata("com.foo", "bar", "1.0-SNAPSHOT", "20231010120000")
+            .versioning(
+                new Metadata.Versioning()
+                    .snapshot(
+                        new Metadata.Snapshot()
+                            .timestamp("20231010.120000")
+                            .buildNumber("1/../../../evil")));
+
+    final var ex =
+        assertThrows(
+            CompletionException.class,
+            () ->
+                jarResolver
+                    .resolveJar(repository, Coordinates.parse("com.foo:bar:1.0-SNAPSHOT"), hostile)
+                    .join());
+
+    assertInstanceOf(IllegalArgumentException.class, ex.getCause(), "cause");
   }
 
   private void mockRemoteJar(String path, byte[] content) {

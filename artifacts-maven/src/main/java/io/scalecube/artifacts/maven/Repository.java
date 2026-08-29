@@ -113,7 +113,12 @@ public class Repository {
    * @return local directory for that version
    */
   public static Path localDir(Repository repository, String spec) {
-    return repository.repoDir().toPath().resolve(Coordinates.parse(spec).directory());
+    final var root = repository.repoDir().toPath().toAbsolutePath().normalize();
+    final var dir = root.resolve(Coordinates.parse(spec).directory()).normalize();
+    if (!dir.startsWith(root)) {
+      throw new IllegalArgumentException("Artifact directory escapes the repository: " + spec);
+    }
+    return dir;
   }
 
   public String id() {
