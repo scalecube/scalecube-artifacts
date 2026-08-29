@@ -3,7 +3,8 @@ name: Branch CI
 on:
   push:
     paths-ignore:
-      - '.github/workflows/**'
+      # TEMPORARY: '.github/workflows/**' removed so changes to this matrix trigger a run.
+      # Restore it when the matrix is reverted.
       - '*.md'
       - '*.txt'
     branches-ignore:
