@@ -29,6 +29,18 @@ public class JarResolver {
 
   private static final Pattern VERSION_TOKEN = Pattern.compile("[A-Za-z0-9._-]+");
 
+  // Publishing is check-then-move, which is not atomic. Two threads creating the same file could
+  // both move, and on Windows replacing a file another thread has open leaves it briefly
+  // unopenable - a class loader reading it then fails with a sharing violation. Holding a lock per
+  // target makes the check decisive, so exactly one move ever happens for a given file.
+  private static final Object[] PUBLISH_LOCKS = new Object[64];
+
+  static {
+    for (int i = 0; i < PUBLISH_LOCKS.length; i++) {
+      PUBLISH_LOCKS[i] = new Object();
+    }
+  }
+
   private final Fetcher fetcher;
 
   public JarResolver(Fetcher fetcher) {
@@ -241,21 +253,36 @@ public class JarResolver {
    * @param sha1 checksum of {@code tmp}, used to recognise an already-published identical build
    */
   private static void publish(Path tmp, Path target, String sha1) throws IOException {
-    if (hasContent(target, sha1)) {
-      deleteIfExists(tmp);
-      return;
-    }
-
-    try {
-      Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
-    } catch (IOException e) {
-      // Another publisher may have won the race between the check above and this move.
+    synchronized (publishLock(target)) {
       if (hasContent(target, sha1)) {
         deleteIfExists(tmp);
         return;
       }
-      throw e;
+
+      try {
+        Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
+      } catch (IOException e) {
+        // Another process may still have won the race; the lock only covers this JVM.
+        if (hasContent(target, sha1)) {
+          deleteIfExists(tmp);
+          return;
+        }
+        throw e;
+      }
     }
+  }
+
+  /**
+   * Returns the lock guarding publication to the given path. Striped over a fixed set, so an
+   * unrelated pair of paths may share one; that only costs a brief wait and keeps the set from
+   * growing with the number of artifacts resolved.
+   *
+   * @param target final location a file is about to be published to
+   * @return the monitor to hold while publishing
+   */
+  private static Object publishLock(Path target) {
+    final var key = target.toAbsolutePath().normalize().hashCode();
+    return PUBLISH_LOCKS[Math.floorMod(key, PUBLISH_LOCKS.length)];
   }
 
   /**
