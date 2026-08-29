@@ -75,15 +75,15 @@ public class MetadataResolver {
                     throw new IOException("Checksum mismatch for maven-metadata");
                   }
 
-                  // Parse before publishing, and publish with ATOMIC_MOVE. Without it the move
-                  // unlinks the target first, so two concurrent publishers race and one fails.
+                  // Parse before publishing, so a failure here never leaves a half-written file
+                  // in place of a good one.
                   final Metadata metadata;
                   try (final var in = Files.newInputStream(tmp)) {
                     metadata = MetadataParser.parseMetadata(in);
                   }
 
-                  Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
-                  Files.move(tmpSha1, targetSha1, REPLACE_EXISTING, ATOMIC_MOVE);
+                  publish(tmpSha1, targetSha1, computeSha1(tmpSha1));
+                  publish(tmp, target, actualSha1);
 
                   return metadata;
                 } catch (Exception e) {
@@ -94,6 +94,41 @@ public class MetadataResolver {
               });
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
+    }
+  }
+
+  /**
+   * Publishes a downloaded file with an atomic move, treating "the identical content is already
+   * there" as success. Metadata is fetched on every resolve, so concurrent resolutions of one
+   * coordinate all publish the same bytes and only the first move is needed. On Windows replacing
+   * a file another thread holds open fails, and overwriting identical content is not worth that.
+   */
+  private static void publish(Path tmp, Path target, String sha1) throws IOException {
+    if (hasContent(target, sha1)) {
+      deleteIfExists(tmp);
+      return;
+    }
+
+    try {
+      Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
+    } catch (IOException e) {
+      // Another publisher may have won the race between the check above and this move.
+      if (hasContent(target, sha1)) {
+        deleteIfExists(tmp);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  private static boolean hasContent(Path path, String sha1) {
+    try {
+      if (!Files.isRegularFile(path) || Files.size(path) == 0) {
+        return false;
+      }
+      return sha1.equalsIgnoreCase(computeSha1(path));
+    } catch (Exception e) {
+      return false;
     }
   }
 

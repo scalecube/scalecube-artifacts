@@ -162,8 +162,8 @@ class JarResolverTest {
     assertTrue(Files.exists(result), "JAR should be in .m2");
     assertArrayEquals(jarContent, Files.readAllBytes(result));
     assertTrue(
-        result.toString().contains("io/scalecube/my-group"),
-        "Path should use slashes for groupId, got: " + result);
+        result.startsWith(m2Repo.resolve("io/scalecube/my-group")),
+        "groupId dots must become directories, got: " + result);
   }
 
   @Test
@@ -205,8 +205,8 @@ class JarResolverTest {
     assertArrayEquals(jarContent, Files.readAllBytes(timestamped));
 
     assertTrue(
-        result.toString().contains("io/scalecube/my-group"),
-        "Path should use slashes for groupId, got: " + result);
+        result.startsWith(m2Repo.resolve("io/scalecube/my-group")),
+        "groupId dots must become directories, got: " + result);
   }
 
   @Test

@@ -81,10 +81,8 @@ public class JarResolver {
                     throw new IOException("Checksum mismatch for " + filename);
                   }
 
-                  // Atomic: a concurrent reader sees the old file or the new one, never a partial
-                  // write, and two concurrent publishers cannot collide.
-                  Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
-                  Files.move(tmpSha1, targetSha1, REPLACE_EXISTING, ATOMIC_MOVE);
+                  publish(tmpSha1, targetSha1, computeSha1(tmpSha1));
+                  publish(tmp, target, actualSha1);
 
                   LOGGER.log(Level.INFO, () -> "Downloaded " + spec + " to " + target);
                   return target;
@@ -211,6 +209,47 @@ public class JarResolver {
       throw new IllegalArgumentException("Invalid " + name + " in metadata: " + value);
     }
     return value;
+  }
+
+  /**
+   * Publishes a downloaded file with an atomic move, treating "the identical build is already
+   * there" as success rather than as something to overwrite. A timestamped build is immutable, so
+   * concurrent resolutions of one coordinate all produce the same bytes and only the first move is
+   * needed. On Unix the redundant moves are harmless; on Windows replacing a file another thread
+   * holds open fails, which is what made concurrent resolution fail there.
+   *
+   * @param tmp downloaded temporary file
+   * @param target final location
+   * @param sha1 checksum of {@code tmp}, used to recognise an already-published identical build
+   */
+  private static void publish(Path tmp, Path target, String sha1) throws IOException {
+    if (hasContent(target, sha1)) {
+      deleteIfExists(tmp);
+      return;
+    }
+
+    try {
+      Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
+    } catch (IOException e) {
+      // Another publisher may have won the race between the check above and this move.
+      if (hasContent(target, sha1)) {
+        deleteIfExists(tmp);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /** Whether the file exists and already holds exactly the content with the given checksum. */
+  private static boolean hasContent(Path path, String sha1) {
+    if (!isReadable(path)) {
+      return false;
+    }
+    try {
+      return sha1.equalsIgnoreCase(computeSha1(path));
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   private static boolean isReadable(Path path) {
