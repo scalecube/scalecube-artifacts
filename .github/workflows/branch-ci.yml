@@ -3,8 +3,7 @@ name: Branch CI
 on:
   push:
     paths-ignore:
-      # TEMPORARY: '.github/workflows/**' removed so changes to this matrix trigger a run.
-      # Restore it when the matrix is reverted.
+      - '.github/workflows/**'
       - '*.md'
       - '*.txt'
     branches-ignore:
@@ -12,8 +11,9 @@ on:
 
 jobs:
   build:
-    # TEMPORARY: the os matrix is here only to find out whether the atomic-move based file
-    # publishing works on Windows and macOS. Revert this commit once the answer is recorded.
+    # File publishing is platform-sensitive: on Unix an atomic move is a rename, on Windows it
+    # cannot replace a file another thread holds open. All three runners are built so a change
+    # that only breaks one of them is caught here.
     name: Branch CI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:

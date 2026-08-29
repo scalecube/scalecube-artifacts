@@ -7,6 +7,7 @@ SHA-1 checksum validation, and configurable update policies.
 ## Requirements
 
 * Java 17+
+* Linux, macOS and Windows — all three are built and tested in CI
 * No external runtime dependencies
 
 ## Features
@@ -15,8 +16,10 @@ SHA-1 checksum validation, and configurable update policies.
 - Two non-overlapping update policies: `REMOTE` always goes to the remote, `LOCAL` never does
 - Async HTTP/2 downloads via `java.net.http.HttpClient`
 - SHA-1 validation after every download, and before serving a cached file (can be turned off)
-- Concurrency-safe: every published file is a single atomic rename, so parallel resolutions of the
-  same coordinate never see a partial file
+- Concurrency-safe: publishing is idempotent. A build already present with the same content is
+  never rewritten, and anything else is published with a single atomic move, so parallel
+  resolutions of the same coordinate never see a partial file. This matters beyond tidiness on
+  Windows, where replacing a file another thread holds open is refused
 - Never writes the base-named `<artifactId>-<version>.jar`, so `mvn install` output is never
   overwritten
 - Automatic retry with exponential back-off, covering both metadata and jar
