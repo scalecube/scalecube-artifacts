@@ -160,6 +160,66 @@ class RepositoryTest {
   }
 
   @Test
+  void testEnvPlaceholderInSettingsIsResolved(@TempDir Path dir) throws IOException {
+    final var settings = dir.resolve("settings.xml");
+    Files.writeString(
+        settings,
+        "<settings><servers><server><id>github</id>"
+            + "<username>${env.GITHUB_USER}</username>"
+            + "<password>${env.GITHUB_TOKEN}</password></server></servers></settings>");
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
+    // placeholders resolve from these properties, not from the process environment
+    properties.setProperty("GITHUB_USER", "my-user");
+    properties.setProperty("GITHUB_TOKEN", "s3cret");
+
+    // Basic base64("my-user:s3cret")
+    assertEquals("Basic bXktdXNlcjpzM2NyZXQ=", concluded(properties).authz(), "authz");
+  }
+
+  @Test
+  void testRawAndPlaceholderCredentialsCanBeMixed(@TempDir Path dir) throws IOException {
+    final var settings = dir.resolve("settings.xml");
+    Files.writeString(
+        settings,
+        "<settings><servers><server><id>github</id>"
+            + "<username>plain-user</username>"
+            + "<password>${env.GITHUB_TOKEN}</password></server></servers></settings>");
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
+    properties.setProperty("GITHUB_TOKEN", "tok-123");
+
+    // the raw username is passed through untouched, only the password is resolved
+    // Basic base64("plain-user:tok-123")
+    assertEquals("Basic cGxhaW4tdXNlcjp0b2stMTIz", concluded(properties).authz(), "authz");
+  }
+
+  @Test
+  void testUnresolvableEnvPlaceholderInSettingsThrows(@TempDir Path dir) throws IOException {
+    final var settings = dir.resolve("settings.xml");
+    Files.writeString(
+        settings,
+        "<settings><servers><server><id>github</id>"
+            + "<username>u</username>"
+            + "<password>${env.GITHUB_TOKEN}</password></server></servers></settings>");
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
+    // GITHUB_TOKEN deliberately not set: sending the literal placeholder as a password would
+    // only produce a confusing 401, so this must fail up front
+
+    assertThrows(IllegalStateException.class, () -> concluded(properties));
+  }
+
+  @Test
   void testVerifyCachedChecksumDefaultsToTrue() {
     assertTrue(concluded(credentialedProps()).verifyCachedChecksum(), "verifyCachedChecksum");
   }
