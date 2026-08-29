@@ -240,7 +240,14 @@ public class JarResolver {
     }
   }
 
-  /** Whether the file exists and already holds exactly the content with the given checksum. */
+  /**
+   * Whether the file is already there and already holds exactly the content with the given
+   * checksum. Used to tell an identical build published by another thread from a real mismatch.
+   *
+   * @param path file to inspect
+   * @param sha1 checksum the content must have
+   * @return true when the file exists and matches
+   */
   private static boolean hasContent(Path path, String sha1) {
     if (!isReadable(path)) {
       return false;
