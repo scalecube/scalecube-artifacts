@@ -154,6 +154,11 @@ can unset an inherited value.
   SNAPSHOT that was merely downloaded earlier does not count: setting `LOCAL` is a statement that
   the artifact is present locally, so it fails loudly rather than recovering from the remote.
 
+  That last rule holds for SNAPSHOTs only. A release carries no `localCopy` marker, so a release
+  jar that was downloaded earlier cannot be told apart from one that `mvn install` produced, and
+  `LOCAL` serves either. This costs nothing in practice: a release version is immutable, so both
+  are the same artifact.
+
   Because each resolver is built from its own `Properties`, the policy is per-artifact: one
   artifact can be pinned to `LOCAL` while everything else stays on `REMOTE`.
 
