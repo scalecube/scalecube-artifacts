@@ -6,13 +6,14 @@ import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import java.io.IOException;
-import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Component that manages local storage of JAR files within the maven repository structure. Handles
@@ -25,7 +26,7 @@ import java.util.regex.Pattern;
  */
 public class JarResolver {
 
-  private static final System.Logger LOGGER = System.getLogger(JarResolver.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(JarResolver.class);
 
   private static final Pattern VERSION_TOKEN = Pattern.compile("[A-Za-z0-9._-]+");
 
@@ -101,7 +102,7 @@ public class JarResolver {
                   publish(tmpSha1, targetSha1, computeSha1(tmpSha1));
                   publish(tmp, target, actualSha1);
 
-                  LOGGER.log(Level.INFO, () -> "Downloaded " + spec + " to " + target);
+                  LOGGER.info("Downloaded {} to {}", spec, target);
                   return target;
                 } catch (Exception e) {
                   deleteIfExists(tmp);
@@ -180,7 +181,7 @@ public class JarResolver {
       return null;
     }
 
-    LOGGER.log(Level.INFO, () -> "Serving locally installed " + spec + ": " + jar);
+    LOGGER.info("Serving locally installed {}: {}", spec, jar);
     return jar;
   }
 
@@ -195,7 +196,7 @@ public class JarResolver {
           && metadata.versioning().snapshot() != null
           && metadata.versioning().snapshot().localCopy();
     } catch (Exception e) {
-      LOGGER.log(Level.WARNING, "Cannot read " + localMetadata, e);
+      LOGGER.warn("Cannot read {}", localMetadata, e);
       return false;
     }
   }
@@ -217,7 +218,9 @@ public class JarResolver {
       // .jar, which is the slot `mvn install` owns. Writing it is what this whole component exists
       // to stop, so a snapshot whose metadata names no build is an error, not a base-named write.
       throw new IllegalStateException(
-          "No snapshot build in metadata for " + coordinates.spec() + ", refusing to write "
+          "No snapshot build in metadata for "
+              + coordinates.spec()
+              + ", refusing to write "
               + coordinates.fileName(coordinates.version()));
     }
 
@@ -333,10 +336,10 @@ public class JarResolver {
       if (expected.equalsIgnoreCase(actual)) {
         return true;
       }
-      LOGGER.log(Level.WARNING, () -> "Cached " + jar + " fails its checksum, re-downloading");
+      LOGGER.warn("Cached {} fails its checksum, re-downloading", jar);
       return false;
     } catch (Exception e) {
-      LOGGER.log(Level.WARNING, "Cannot verify cached " + jar + ", re-downloading", e);
+      LOGGER.warn("Cannot verify cached {}, re-downloading", jar, e);
       return false;
     }
   }
@@ -376,8 +379,8 @@ public class JarResolver {
 
   /**
    * Deletes the temp file a fetch downloaded, once the resolution around it has failed. A fetch
-   * that failed already cleaned up after itself; this is for the one that succeeded while the
-   * other failed, whose file would otherwise be left behind in the repository.
+   * that failed already cleaned up after itself; this is for the one that succeeded while the other
+   * failed, whose file would otherwise be left behind in the repository.
    *
    * @param fetch a completed or failed fetch
    */

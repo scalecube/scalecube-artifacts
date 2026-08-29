@@ -1,24 +1,25 @@
 package io.scalecube.artifacts.maven;
 
 import io.scalecube.artifacts.api.ArtifactResolver;
-import java.lang.System.Logger.Level;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Entry point for artifact resolution by GAV coordinates. Orchestrates maven metadata checks and
  * JAR downloads based on the provided {@link UpdatePolicy}.
  *
- * <p>The two policies do not overlap. {@link UpdatePolicy#REMOTE} always checks remote metadata
- * and downloads when the remote is newer; whether a locally installed build exists is irrelevant.
+ * <p>The two policies do not overlap. {@link UpdatePolicy#REMOTE} always checks remote metadata and
+ * downloads when the remote is newer; whether a locally installed build exists is irrelevant.
  * {@link UpdatePolicy#LOCAL} serves the locally installed build and never uses the network, and
  * throws when there is none.
  */
 public class MavenResolver implements ArtifactResolver {
 
-  private static final System.Logger LOGGER = System.getLogger(MavenResolver.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(MavenResolver.class);
 
   private final Repository repository;
   private final MetadataResolver metadataResolver;
@@ -93,18 +94,12 @@ public class MavenResolver implements ArtifactResolver {
         && attempt < repository.retryMaxAttempts()) {
       final long delayMs =
           Math.min(repository.retryInitialDelayMs() << (attempt - 1), repository.retryMaxDelayMs());
-      LOGGER.log(
-          Level.INFO,
-          () ->
-              "Not published yet: "
-                  + coordinates
-                  + ", retrying in "
-                  + delayMs
-                  + "ms (attempt "
-                  + attempt
-                  + "/"
-                  + repository.retryMaxAttempts()
-                  + ")");
+      LOGGER.info(
+          "Not published yet: {}, retrying in {}ms (attempt {}/{})",
+          coordinates,
+          delayMs,
+          attempt,
+          repository.retryMaxAttempts());
       return CompletableFuture.runAsync(
               () -> {}, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
           .thenCompose(ignored -> doResolve(coordinates, attempt + 1));

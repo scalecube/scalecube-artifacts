@@ -1,14 +1,14 @@
 # scalecube-artifacts
 
-Lightweight Java library for resolving and syncing artifacts from remote Maven repositories
-(e.g. GitHub Packages) to the local filesystem, with support for SNAPSHOT timestamp resolution,
-SHA-1 checksum validation, and configurable update policies.
+Lightweight Java library for resolving and syncing artifacts from remote Maven repositories (e.g.
+GitHub Packages) to the local filesystem, with support for SNAPSHOT timestamp resolution, SHA-1
+checksum validation, and configurable update policies.
 
 ## Requirements
 
 * Java 17+
 * Linux, macOS and Windows — all three are built and tested in CI
-* No external runtime dependencies
+* Single runtime dependency: `slf4j-api`
 
 ## Features
 
@@ -16,15 +16,15 @@ SHA-1 checksum validation, and configurable update policies.
 - Two non-overlapping update policies: `REMOTE` always goes to the remote, `LOCAL` never does
 - Async HTTP/2 downloads via `java.net.http.HttpClient`
 - SHA-1 validation after every download, and before serving a cached file (can be turned off)
-- Concurrency-safe: publishing is idempotent. A build already present with the same content is
-  never rewritten, and anything else is published with a single atomic move, so parallel
-  resolutions of the same coordinate never see a partial file. This matters beyond tidiness on
-  Windows, where replacing a file another thread holds open is refused
+- Concurrency-safe: publishing is idempotent. A build already present with the same content is never
+  rewritten, and anything else is published with a single atomic move, so parallel resolutions of
+  the same coordinate never see a partial file. This matters beyond tidiness on Windows, where
+  replacing a file another thread holds open is refused
 - Never writes the base-named `<artifactId>-<version>.jar`, so `mvn install` output is never
   overwritten
 - Automatic retry with exponential back-off, covering both metadata and jar
 - Credentials from inline properties or `~/.m2/settings.xml` (with `${env.VAR}` interpolation)
-- Zero runtime dependencies beyond the JDK
+- Logging via SLF4J; bring whichever binding you like (Logback, Log4j2, etc.) — none is bundled
 
 ## Use case
 
@@ -121,27 +121,26 @@ can unset an inherited value.
 
 ### Repository
 
-- `scalecube.artifacts.maven.repo.id` `(string: <required>)` – Repository identifier.
-  Must match the `<id>` in `~/.m2/settings.xml` when credentials are read from there.
+- `scalecube.artifacts.maven.repo.id` `(string: <required>)` – Repository identifier. Must match the
+  `<id>` in `~/.m2/settings.xml` when credentials are read from there.
 
-- `scalecube.artifacts.maven.repo.url` `(string: <required>)` – Base URL of the remote
-  repository. A trailing slash is trimmed.
+- `scalecube.artifacts.maven.repo.url` `(string: <required>)` – Base URL of the remote repository. A
+  trailing slash is trimmed.
 
-- `scalecube.artifacts.maven.repo.dir` `(string: "~/.m2/repository")` – Local cache
-  directory. Artifacts are stored under the standard Maven layout
-  (`<groupId>/<artifactId>/<version>/`).
+- `scalecube.artifacts.maven.repo.dir` `(string: "~/.m2/repository")` – Local cache directory.
+  Artifacts are stored under the standard Maven layout (`<groupId>/<artifactId>/<version>/`).
 
 - `scalecube.artifacts.maven.repo.settings` `(string: "~/.m2/settings.xml")` – Where to read
   `<server>` credentials from. Independent of `repo.dir`, so pointing the cache at a scratch
   directory does not move the settings lookup with it.
 
-- `scalecube.artifacts.maven.repo.verifyCachedChecksum` `(boolean: true)` – Whether a jar
-  already in the local cache is checked against its stored `.sha1` before being served. A jar with
-  no `.sha1` beside it, or one that disagrees, is downloaded again. Checking costs one pass over
-  the file, so it can be turned off for large artifacts.
+- `scalecube.artifacts.maven.repo.verifyCachedChecksum` `(boolean: true)` – Whether a jar already in
+  the local cache is checked against its stored `.sha1` before being served. A jar with no `.sha1`
+  beside it, or one that disagrees, is downloaded again. Checking costs one pass over the file, so
+  it can be turned off for large artifacts.
 
-- `scalecube.artifacts.maven.repo.updatePolicy` `(string: "REMOTE")` – Controls when the
-  remote is consulted. The two policies do not overlap.
+- `scalecube.artifacts.maven.repo.updatePolicy` `(string: "REMOTE")` – Controls when the remote is
+  consulted. The two policies do not overlap.
 
   `REMOTE` always checks remote metadata and downloads when the remote is newer. Whether a build
   installed by `mvn install` is present is irrelevant under this policy. A previously downloaded
@@ -149,18 +148,18 @@ can unset an inherited value.
   the file name identifies the build, so only its checksum needs checking.
 
   `LOCAL` never touches the network. For a SNAPSHOT it serves the build installed by `mvn install`
-  — the base-named jar, with `<localCopy>true</localCopy>` in `maven-metadata-local.xml` — and for
-  a release the jar at its canonical name. It throws `IllegalStateException` if there is none. A
+  — the base-named jar, with `<localCopy>true</localCopy>` in `maven-metadata-local.xml` — and for a
+  release the jar at its canonical name. It throws `IllegalStateException` if there is none. A
   SNAPSHOT that was merely downloaded earlier does not count: setting `LOCAL` is a statement that
   the artifact is present locally, so it fails loudly rather than recovering from the remote.
 
-  That last rule holds for SNAPSHOTs only. A release carries no `localCopy` marker, so a release
-  jar that was downloaded earlier cannot be told apart from one that `mvn install` produced, and
-  `LOCAL` serves either. This costs nothing in practice: a release version is immutable, so both
-  are the same artifact.
+  That last rule holds for SNAPSHOTs only. A release carries no `localCopy` marker, so a release jar
+  that was downloaded earlier cannot be told apart from one that `mvn install` produced, and
+  `LOCAL` serves either. This costs nothing in practice: a release version is immutable, so both are
+  the same artifact.
 
-  Because each resolver is built from its own `Properties`, the policy is per-artifact: one
-  artifact can be pinned to `LOCAL` while everything else stays on `REMOTE`.
+  Because each resolver is built from its own `Properties`, the policy is per-artifact: one artifact
+  can be pinned to `LOCAL` while everything else stays on `REMOTE`.
 
 ### Retry
 
@@ -169,8 +168,8 @@ a network error or a retryable status (429, 502, 503, 504). `MavenResolver` retr
 metadata-then-jar chain on 404, because a freshly published artifact answers 404 on its metadata
 before its jar appears.
 
-- `scalecube.artifacts.maven.repo.retryMaxAttempts` `(integer: 10)` – Total attempts, including
-  the first, before the returned `CompletableFuture` fails.
+- `scalecube.artifacts.maven.repo.retryMaxAttempts` `(integer: 10)` – Total attempts, including the
+  first, before the returned `CompletableFuture` fails.
 
 - `scalecube.artifacts.maven.repo.retryInitialDelayMs` `(integer: 3000)` – Delay in milliseconds
   before the first retry. Each subsequent attempt doubles the delay (exponential back-off).
@@ -182,8 +181,8 @@ before its jar appears.
 
 - `scalecube.artifacts.maven.repo.username` `(string: unset)` – Username for HTTP Basic auth.
 
-- `scalecube.artifacts.maven.repo.password` `(string: unset)` – Password or token for HTTP
-  Basic auth.
+- `scalecube.artifacts.maven.repo.password` `(string: unset)` – Password or token for HTTP Basic
+  auth.
 
 Both must be set and non-empty to be used. Otherwise credentials are looked up in the settings file
 by the repo `id`.
@@ -193,9 +192,8 @@ anonymously, which is correct for a public repository and harmless for an artifa
 local cache. A `<server>` whose `${env.VAR}` placeholder cannot be expanded *is* an error, since
 that is a misconfiguration rather than an absent credential.
 
-When credentials come from `settings.xml`, placeholders in the form `${env.VAR_NAME}` are
-resolved from the same `Properties` object passed to the provider — not from the process
-environment:
+When credentials come from `settings.xml`, placeholders in the form `${env.VAR_NAME}` are resolved
+from the same `Properties` object passed to the provider — not from the process environment:
 
 ```xml
 <server>

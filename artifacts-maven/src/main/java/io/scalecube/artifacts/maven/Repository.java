@@ -2,7 +2,6 @@ package io.scalecube.artifacts.maven;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.System.Logger.Level;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,11 +11,13 @@ import java.util.Properties;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.NodeList;
 
 public class Repository {
 
-  private static final System.Logger LOGGER = System.getLogger(Repository.class.getName());
+  private static final Logger LOGGER = LoggerFactory.getLogger(Repository.class);
 
   public static final String REPO_DIR_PROP_NAME = "scalecube.artifacts.maven.repo.dir";
   public static final String REPO_SETTINGS_PROP_NAME = "scalecube.artifacts.maven.repo.settings";
@@ -352,7 +353,7 @@ public class Repository {
 
   private static String credentialsFromSettings(String id, Path settings, Properties properties) {
     if (Files.notExists(settings)) {
-      LOGGER.log(Level.DEBUG, () -> settings + " does not exist, continuing without credentials");
+      LOGGER.debug("{} does not exist, continuing without credentials", settings);
       return null;
     }
 
@@ -365,7 +366,7 @@ public class Repository {
           (NodeList) xPath.evaluate("//server[id='" + id + "']", doc, XPathConstants.NODESET);
 
       if (servers.getLength() == 0) {
-        LOGGER.log(Level.WARNING, () -> "No server found with id=" + id + " in " + settings);
+        LOGGER.warn("No server found with id={} in {}", id, settings);
         return null;
       }
 
