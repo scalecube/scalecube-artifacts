@@ -255,6 +255,52 @@ class JarResolverTest {
     assertArrayEquals(cached, Files.readAllBytes(result));
   }
 
+  @Test
+  void localPolicyServesInstalledBuild() throws Exception {
+    final var dir = m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT");
+    Files.createDirectories(dir);
+    final var installed = dir.resolve("bar-1.0-SNAPSHOT.jar");
+    Files.write(installed, "installed".getBytes());
+    Files.writeString(
+        dir.resolve("maven-metadata-local.xml"),
+        """
+        <metadata>
+          <versioning>
+            <snapshot><localCopy>true</localCopy></snapshot>
+          </versioning>
+        </metadata>
+        """);
+
+    assertEquals(
+        installed,
+        jarResolver.resolveLocalJar(repository, "com.foo:bar:1.0-SNAPSHOT"),
+        "installed build");
+  }
+
+  @Test
+  void localPolicyThrowsWhenOnlyADownloadedBuildIsCached() throws Exception {
+    // a timestamped build downloaded earlier is NOT a local build: LOCAL must throw, not serve it
+    final var dir = m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT");
+    Files.createDirectories(dir);
+    Files.write(dir.resolve("bar-1.0-20260225.142030-45.jar"), "downloaded".getBytes());
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> jarResolver.resolveLocalJar(repository, "com.foo:bar:1.0-SNAPSHOT"));
+  }
+
+  @Test
+  void localPolicyThrowsWhenBaseNamedJarHasNoLocalCopyMarker() throws Exception {
+    // a base-named jar left by an older release of this library must not pass as `mvn install`
+    final var dir = m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT");
+    Files.createDirectories(dir);
+    Files.write(dir.resolve("bar-1.0-SNAPSHOT.jar"), "stale-alias".getBytes());
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> jarResolver.resolveLocalJar(repository, "com.foo:bar:1.0-SNAPSHOT"));
+  }
+
   private void mockRemoteJar(String path, byte[] content) {
     // Mock the JAR
     server.createContext(

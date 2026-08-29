@@ -11,9 +11,10 @@ import java.util.concurrent.TimeUnit;
  * Entry point for artifact resolution by GAV coordinates. Orchestrates maven metadata checks and
  * JAR downloads based on the provided {@link UpdatePolicy}.
  *
- * <p>A build installed by {@code mvn install} wins over any remote build. Under {@link
- * UpdatePolicy#LOCAL} the network is never used. Resolution does not fall back to a stale cached
- * build when the remote is reachable but the artifact is missing.
+ * <p>The two policies do not overlap. {@link UpdatePolicy#REMOTE} always checks remote metadata
+ * and downloads when the remote is newer; whether a locally installed build exists is irrelevant.
+ * {@link UpdatePolicy#LOCAL} serves the locally installed build and never uses the network, and
+ * throws when there is none.
  */
 public class MavenResolver implements ArtifactResolver {
 
@@ -62,12 +63,6 @@ public class MavenResolver implements ArtifactResolver {
     try {
       if (repository.repoUpdatePolicy() == UpdatePolicy.LOCAL) {
         return CompletableFuture.completedFuture(jarResolver.resolveLocalJar(repository, spec));
-      }
-
-      // Maven's localCopy rule: what `mvn install` produced beats anything remote.
-      final var installed = jarResolver.getInstalledJar(repository, spec);
-      if (installed != null) {
-        return CompletableFuture.completedFuture(installed);
       }
     } catch (RuntimeException e) {
       return CompletableFuture.failedFuture(e);

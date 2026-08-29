@@ -10,7 +10,6 @@ import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -112,12 +111,13 @@ public class JarResolver {
   }
 
   /**
-   * Locates the JAR in the local repository without hitting the network: the build installed by
-   * {@code mvn install} if there is one, otherwise the newest build already downloaded.
+   * Locates the build installed by {@code mvn install}, without hitting the network. A build that
+   * was merely downloaded earlier does not count: under {@link UpdatePolicy#LOCAL} the caller asked
+   * for their own build, and serving some older download instead would hide its absence.
    *
    * @param repository artifact repository
    * @param spec artifact coordinate
-   * @return {@link Path} to the local JAR, or {@code null} when there is none
+   * @return {@link Path} to the locally installed JAR, or {@code null} when there is none
    */
   public Path getLocalJar(Repository repository, String spec) {
     final var installed = getInstalledJar(repository, spec);
@@ -131,7 +131,7 @@ public class JarResolver {
       return isReadable(jar) ? jar : null;
     }
 
-    return newestCachedBuild(repository, coordinates);
+    return null;
   }
 
   /**
@@ -168,40 +168,6 @@ public class JarResolver {
     } catch (Exception e) {
       LOGGER.log(Level.WARNING, "Cannot read " + localMetadata, e);
       return false;
-    }
-  }
-
-  /**
-   * Returns the newest build of a snapshot that is already in the local repository. Builds are
-   * ordered by their timestamped file name, so the last one is the newest. Returns null when
-   * nothing was downloaded yet.
-   *
-   * @param repository artifact repository
-   * @param coordinates artifact coordinates
-   * @return newest cached jar, or null if there is none
-   */
-  private static Path newestCachedBuild(Repository repository, Coordinates coordinates) {
-    final var directory = Repository.localDir(repository, coordinates.spec());
-    if (!Files.isDirectory(directory)) {
-      return null;
-    }
-
-    final var prefix = coordinates.artifactId() + "-" + coordinates.baseVersion() + "-";
-    try (final var files = Files.list(directory)) {
-      return files
-          .filter(
-              file -> {
-                final var name = file.getFileName().toString();
-                return name.startsWith(prefix) && name.endsWith(".jar");
-              })
-          .filter(JarResolver::isReadable)
-          // Names embed a fixed-width yyyyMMdd.HHmmss timestamp, so lexicographic order is
-          // chronological order.
-          .max(Comparator.comparing(file -> file.getFileName().toString()))
-          .orElse(null);
-    } catch (IOException e) {
-      LOGGER.log(Level.WARNING, "Cannot list " + directory, e);
-      return null;
     }
   }
 

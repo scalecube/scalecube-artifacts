@@ -103,12 +103,12 @@ class MavenResolverTest {
   }
 
   @Test
-  void resolve_snapshot_remotePolicy_locallyInstalledBuildWinsOverRemote() {
+  void resolve_snapshot_remotePolicy_ignoresLocallyInstalledBuild() {
     Repository repository =
         new Repository()
             .id("central")
             .url("http://localhost:0")
-            .authz("Bearer cool-token")
+            .authz("Bearer test-token")
             .repoDir(tempCacheDir.toFile())
             .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
@@ -116,21 +116,28 @@ class MavenResolverTest {
 
     String spec = "com.foo:bar:1.0-SNAPSHOT";
 
-    // A build produced by `mvn install` wins over any remote build, so a developer can build a
-    // service locally and run a suite against that build.
+    // A build produced by `mvn install` is present, and under REMOTE it must be irrelevant:
+    // the remote is still checked and its build is what gets served.
     Path installedJar = tempCacheDir.resolve("bar-1.0-SNAPSHOT.jar");
     try {
       Files.createFile(installedJar);
     } catch (IOException e) {
       fail("Cannot create test file", e);
     }
-    when(jarResolver.getInstalledJar(repository, spec)).thenReturn(installedJar);
+
+    Metadata metadata = new Metadata().version("1.0-SNAPSHOT");
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(CompletableFuture.completedFuture(metadata));
+
+    Path remoteJar = tempCacheDir.resolve("bar-1.0-20260225.142030-45.jar");
+    when(jarResolver.resolveJar(repository, metadata))
+        .thenReturn(CompletableFuture.completedFuture(remoteJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
-    assertEquals(installedJar, result);
-    verifyNoInteractions(metadataResolver);
-    verify(jarResolver, never()).resolveJar(any(), any());
+    assertEquals(remoteJar, result);
+    verify(jarResolver, never()).getInstalledJar(any(), any());
+    verify(metadataResolver).resolveRemote(repository, spec);
   }
 
   @Test

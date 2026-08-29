@@ -177,26 +177,31 @@ class SnapshotAliasRegressionTest {
    * localCopy} rule guarantees - and it must certainly not be overwritten.
    */
   @Test
-  void locallyInstalledSnapshotIsNeitherIgnoredNorOverwritten() throws Exception {
+  void locallyInstalledSnapshotIsNotOverwrittenAndIsIgnoredUnderRemotePolicy() throws Exception {
     final var dir = m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT");
     Files.createDirectories(dir);
 
     final var installedJar = dir.resolve(ARTIFACT_ID + "-" + VERSION + ".jar");
-    // A different payload than the remote build, so "the remote one won" is detectable.
+    // A different payload than the remote build, so which one was served is detectable.
     final var installed = newJar("locally-built");
     Files.write(installedJar, installed);
     Files.writeString(dir.resolve("maven-metadata-local.xml"), localMetadata());
 
     final var resolved = new MavenResolver(repository).resolve(SPEC).join();
 
+    // The bug: resolution used to copy the downloaded build onto the base name, which is the slot
+    // `mvn install` owns. It must be left exactly as the developer built it.
     assertArrayEquals(
         installed,
         Files.readAllBytes(installedJar),
         "the locally installed -SNAPSHOT.jar was overwritten by the remote build");
-    assertArrayEquals(
-        installed,
-        Files.readAllBytes(resolved),
-        "resolution returned the remote build instead of the locally installed one");
+
+    // Under REMOTE the locally installed build is irrelevant: the remote build is what is served.
+    assertEquals(
+        ARTIFACT_ID + "-" + TIMESTAMPED_VERSION + ".jar",
+        resolved.getFileName().toString(),
+        "REMOTE must serve the remote build, not the locally installed one");
+    assertArrayEquals(jar, Files.readAllBytes(resolved), "resolved content");
   }
 
   private static String verifyJar(Path path) {
