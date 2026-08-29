@@ -128,8 +128,7 @@ public record Repository(
     return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : defaultValue;
   }
 
-  private static boolean getProperty(
-      Properties properties, String name, boolean defaultValue) {
+  private static boolean getProperty(Properties properties, String name, boolean defaultValue) {
     final var value = getProperty(properties, name);
     return value != null ? Boolean.parseBoolean(value) : defaultValue;
   }
@@ -264,5 +263,4 @@ public record Repository(
     }
     return value;
   }
-
 }

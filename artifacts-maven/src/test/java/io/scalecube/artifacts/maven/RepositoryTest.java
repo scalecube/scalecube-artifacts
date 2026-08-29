@@ -110,8 +110,10 @@ class RepositoryTest {
   @Test
   void testSettingsWithoutMatchingServerYieldsNoCredentials(@TempDir Path dir) throws IOException {
     final var settings = dir.resolve("settings.xml");
-    Files.writeString(settings, "<settings><servers><server><id>other</id>"
-        + "<username>u</username><password>p</password></server></servers></settings>");
+    Files.writeString(
+        settings,
+        "<settings><servers><server><id>other</id>"
+            + "<username>u</username><password>p</password></server></servers></settings>");
 
     final var properties = new Properties();
     properties.setProperty(REPO_ID_PROP_NAME, "github");
@@ -124,8 +126,10 @@ class RepositoryTest {
   @Test
   void testCredentialsReadFromSettingsPath(@TempDir Path dir) throws IOException {
     final var settings = dir.resolve("settings.xml");
-    Files.writeString(settings, "<settings><servers><server><id>github</id>"
-        + "<username>u</username><password>p</password></server></servers></settings>");
+    Files.writeString(
+        settings,
+        "<settings><servers><server><id>github</id>"
+            + "<username>u</username><password>p</password></server></servers></settings>");
 
     final var properties = new Properties();
     properties.setProperty(REPO_ID_PROP_NAME, "github");
@@ -141,8 +145,7 @@ class RepositoryTest {
   @Test
   void testVerifyCachedChecksumDefaultsToTrue() {
     assertTrue(
-        Repository.newInstance(credentialedProps()).verifyCachedChecksum(),
-        "verifyCachedChecksum");
+        Repository.newInstance(credentialedProps()).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   @Test
@@ -150,8 +153,7 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, "false");
 
-    assertFalse(
-        Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+    assertFalse(Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   @Test
@@ -159,8 +161,7 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, NULL_VALUE);
 
-    assertTrue(
-        Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+    assertTrue(Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   private static Properties credentialedProps() {
