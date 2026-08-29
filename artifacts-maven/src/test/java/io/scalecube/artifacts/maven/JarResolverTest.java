@@ -228,6 +228,33 @@ class JarResolverTest {
     assertArrayEquals(cached, Files.readAllBytes(result));
   }
 
+  @Test
+  void shouldServeCachedJarWithoutChecksumWhenVerificationIsOff() throws Exception {
+    Repository noVerify =
+        new Repository(
+            "central",
+            repository.url(),
+            repository.authz(),
+            m2Repo.toFile(),
+            UpdatePolicy.REMOTE,
+            Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
+            Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
+            false);
+
+    byte[] cached = "already-here".getBytes();
+    Path dir = m2Repo.resolve("com/foo/bar/1.0");
+    Files.createDirectories(dir);
+    Files.write(dir.resolve("bar-1.0.jar"), cached);
+
+    // No .sha1 beside it and no remote context: only the disabled check lets this succeed.
+    Path result =
+        jarResolver
+            .resolveJar(noVerify, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+            .join();
+
+    assertArrayEquals(cached, Files.readAllBytes(result));
+  }
+
   private void mockRemoteJar(String path, byte[] content) {
     // Mock the JAR
     server.createContext(

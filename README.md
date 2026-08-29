@@ -122,6 +122,10 @@ can unset an inherited value.
   `<server>` credentials from. Independent of `repo.dir`, so pointing the cache at a scratch
   directory does not move the settings lookup with it.
 
+- `scalecube.artifacts.maven.repo.verifyCachedChecksum` `(boolean: true)` – Whether a jar
+  already in the local cache is checked against its stored `.sha1` before being served. Checking
+  costs one pass over the file, so it can be turned off for large artifacts.
+
 - `scalecube.artifacts.maven.repo.updatePolicy` `(string: "REMOTE")` – Controls when the
   remote is consulted. `REMOTE` prefers a locally installed SNAPSHOT, and otherwise fetches
   metadata to learn which build to serve or download. `LOCAL` never touches the network: it

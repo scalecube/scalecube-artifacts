@@ -21,7 +21,8 @@ public record Repository(
     File repoDir,
     UpdatePolicy repoUpdatePolicy,
     int retryMaxAttempts,
-    long retryInitialDelayMs) {
+    long retryInitialDelayMs,
+    boolean verifyCachedChecksum) {
 
   private static final System.Logger LOGGER = System.getLogger(Repository.class.getName());
 
@@ -37,10 +38,13 @@ public record Repository(
       "scalecube.artifacts.maven.repo.retryMaxAttempts";
   public static final String REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME =
       "scalecube.artifacts.maven.repo.retryInitialDelayMs";
+  public static final String REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME =
+      "scalecube.artifacts.maven.repo.verifyCachedChecksum";
 
   public static final UpdatePolicy DEFAULT_REPO_UPDATE_POLICY = UpdatePolicy.REMOTE;
   public static final int DEFAULT_REPO_RETRY_MAX_ATTEMPTS = 10;
   public static final long DEFAULT_REPO_RETRY_INITIAL_DELAY_MS = 3000L;
+  public static final boolean DEFAULT_REPO_VERIFY_CACHED_CHECKSUM = true;
 
   public Repository(
       String id, String url, String authz, File repoDir, UpdatePolicy repoUpdatePolicy) {
@@ -54,6 +58,25 @@ public record Repository(
         DEFAULT_REPO_RETRY_INITIAL_DELAY_MS);
   }
 
+  public Repository(
+      String id,
+      String url,
+      String authz,
+      File repoDir,
+      UpdatePolicy repoUpdatePolicy,
+      int retryMaxAttempts,
+      long retryInitialDelayMs) {
+    this(
+        id,
+        url,
+        authz,
+        repoDir,
+        repoUpdatePolicy,
+        retryMaxAttempts,
+        retryInitialDelayMs,
+        DEFAULT_REPO_VERIFY_CACHED_CHECKSUM);
+  }
+
   public static Repository newInstance(Properties properties) {
     final var id = repoId(properties);
     final var repoDir = repoDir(properties);
@@ -65,7 +88,8 @@ public record Repository(
         repoDir,
         repoUpdatePolicy(properties),
         repoRetryMaxAttempts(properties),
-        repoRetryInitialDelayMs(properties));
+        repoRetryInitialDelayMs(properties),
+        repoVerifyCachedChecksum(properties));
   }
 
   public static URI remoteUri(Repository repository, String spec, String name) {
@@ -102,6 +126,12 @@ public record Repository(
       Properties properties, String name, UpdatePolicy defaultValue) {
     final var value = getProperty(properties, name);
     return value != null ? UpdatePolicy.valueOf(value.toUpperCase()) : defaultValue;
+  }
+
+  private static boolean getProperty(
+      Properties properties, String name, boolean defaultValue) {
+    final var value = getProperty(properties, name);
+    return value != null ? Boolean.parseBoolean(value) : defaultValue;
   }
 
   private static String requireProperty(Properties properties, String name, String description) {
@@ -165,6 +195,11 @@ public record Repository(
    * none, and an artifact already in the local repository is served without any request. An
    * unexpandable {@code ${env.NAME}} still fails, see {@link #unwrap}.
    */
+  private static boolean repoVerifyCachedChecksum(Properties properties) {
+    return getProperty(
+        properties, REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, DEFAULT_REPO_VERIFY_CACHED_CHECKSUM);
+  }
+
   private static String repoAuthorization(Properties properties, String repoId) {
     final var username = getProperty(properties, REPO_USERNAME_PROP_NAME);
     final var password = getProperty(properties, REPO_PASSWORD_PROP_NAME);

@@ -9,10 +9,13 @@ import static io.scalecube.artifacts.maven.Repository.REPO_SETTINGS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_UPDATE_POLICY_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_URL_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_USERNAME_PROP_NAME;
+import static io.scalecube.artifacts.maven.Repository.REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -133,6 +136,31 @@ class RepositoryTest {
 
     assertNotNull(authz, "authz");
     assertEquals("Basic dTpw", authz, "authz");
+  }
+
+  @Test
+  void testVerifyCachedChecksumDefaultsToTrue() {
+    assertTrue(
+        Repository.newInstance(credentialedProps()).verifyCachedChecksum(),
+        "verifyCachedChecksum");
+  }
+
+  @Test
+  void testVerifyCachedChecksumCanBeTurnedOff() {
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, "false");
+
+    assertFalse(
+        Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+  }
+
+  @Test
+  void testNullMarkerOnVerifyCachedChecksumFallsBackToDefault() {
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, NULL_VALUE);
+
+    assertTrue(
+        Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   private static Properties credentialedProps() {

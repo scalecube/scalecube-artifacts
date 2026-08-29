@@ -55,7 +55,7 @@ public class JarResolver {
 
       // The file name identifies the build, so a cached copy needs no freshness check, only a
       // checksum check. A jar with no .sha1 beside it, or one that disagrees, is downloaded again.
-      if (isVerifiedCache(target, targetSha1)) {
+      if (isUsableCache(repository, target, targetSha1)) {
         return CompletableFuture.completedFuture(target);
       }
 
@@ -243,9 +243,19 @@ public class JarResolver {
     }
   }
 
-  /** Whether {@code jar} is present and matches the {@code .sha1} stored next to it. */
-  private static boolean isVerifiedCache(Path jar, Path sha1) {
-    if (!isReadable(jar) || !isReadable(sha1)) {
+  /**
+   * Whether the cached jar can be served. With {@link Repository#verifyCachedChecksum()} on, which
+   * is the default, it must also match the {@code .sha1} stored next to it; checking costs one pass
+   * over the file, so it can be turned off for large artifacts.
+   */
+  private static boolean isUsableCache(Repository repository, Path jar, Path sha1) {
+    if (!isReadable(jar)) {
+      return false;
+    }
+    if (!repository.verifyCachedChecksum()) {
+      return true;
+    }
+    if (!isReadable(sha1)) {
       return false;
     }
     try {
