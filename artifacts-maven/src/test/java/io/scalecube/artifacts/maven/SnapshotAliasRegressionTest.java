@@ -30,10 +30,10 @@ import org.junit.jupiter.api.io.TempDir;
  * Reproduces the two defects caused by publishing a base-named {@code <artifactId>-<version>.jar}
  * alias next to the timestamped SNAPSHOT build.
  *
- * <p>Both are the failure mode observed in the exchange's integration suites: {@code
- * StartableService} hands the resolved path to a {@link java.net.URLClassLoader}, so a jar that is
- * only partially written, or one that is not the jar the developer built, surfaces much later as a
- * confusing Micronaut {@code NoSuchBeanException} rather than as a resolution error.
+ * <p>Both were observed in integration suites that hand the resolved path to a {@link
+ * java.net.URLClassLoader}. A jar that is only partially written, or one that is not the jar the
+ * developer built, surfaces much later as a missing service or bean rather than as a resolution
+ * error, which is what makes these defects expensive to diagnose.
  */
 class SnapshotAliasRegressionTest {
 
@@ -82,10 +82,9 @@ class SnapshotAliasRegressionTest {
   }
 
   /**
-   * sanity-service and sbe-gateway declare {@code io.exberry:exchange-market-data-service} in two
-   * properties files (mds-internal and mds-external). {@code Startables.deepStart} starts them in
-   * parallel, so two resolutions of the same coordinate run concurrently and both publish the alias
-   * with a non-atomic {@code Files.copy(REPLACE_EXISTING)} to the same path.
+   * A suite that starts services in parallel and declares one artifact twice - the same coordinate
+   * under two different service names - runs two resolutions of it concurrently. Both then publish
+   * the alias to the same path with a non-atomic {@code Files.copy(REPLACE_EXISTING)}.
    */
   @Test
   void concurrentResolutionsOfTheSameSnapshotAllYieldReadableJars() throws Exception {
