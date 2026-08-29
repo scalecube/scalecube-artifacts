@@ -13,6 +13,7 @@ import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.security.MessageDigest;
 import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.AfterEach;
@@ -398,6 +399,75 @@ class JarResolverTest {
                     .join());
 
     assertInstanceOf(IllegalArgumentException.class, ex.getCause(), "cause");
+  }
+
+  @Test
+  void snapshotWithNoBuildInMetadataThrowsInsteadOfWritingTheBaseName() throws Exception {
+    final var dir = m2Repo.resolve("com/foo/bar/1.0-SNAPSHOT");
+    Files.createDirectories(dir);
+    final var installed = dir.resolve("bar-1.0-SNAPSHOT.jar");
+    Files.write(installed, "locally-built".getBytes());
+
+    // The remote will happily serve a base-named jar with different content, so if resolution ever
+    // asks for that name it overwrites what `mvn install` produced.
+    mockRemoteJar("/com/foo/bar/1.0-SNAPSHOT/bar-1.0-SNAPSHOT.jar", "from-remote".getBytes());
+
+    // Metadata for a snapshot that names no build. Falling back to the requested version would
+    // resolve to bar-1.0-SNAPSHOT.jar, the slot `mvn install` owns.
+    final var noBuild = newMetadata("com.foo", "bar", "1.0-SNAPSHOT", "20231010120000");
+
+    final var ex =
+        assertThrows(
+            CompletionException.class,
+            () ->
+                jarResolver
+                    .resolveJar(repository, Coordinates.parse("com.foo:bar:1.0-SNAPSHOT"), noBuild)
+                    .join());
+
+    assertInstanceOf(IllegalStateException.class, ex.getCause(), "cause");
+    assertArrayEquals(
+        "locally-built".getBytes(),
+        Files.readAllBytes(installed),
+        "the locally installed jar must be untouched");
+  }
+
+  @Test
+  void temporaryFileIsNotLeftBehindWhenOnlyOneFetchSucceeds() throws Exception {
+    // The jar is served but its .sha1 is not, so the combining step never runs. The jar's temp
+    // file must still be cleaned up rather than stranded in the repository.
+    final var jarContent = "downloaded".getBytes();
+    server.createContext(
+        "/com/foo/bar/1.0/bar-1.0.jar",
+        ex -> {
+          ex.sendResponseHeaders(200, jarContent.length);
+          ex.getResponseBody().write(jarContent);
+          ex.close();
+        });
+    // no context for the .sha1: it answers 404, so the combining step never runs
+    server.createContext(
+        "/com/foo/bar/1.0/bar-1.0.jar.sha1",
+        ex -> {
+          ex.sendResponseHeaders(404, -1);
+          ex.close();
+        });
+
+    assertThrows(
+        CompletionException.class,
+        () ->
+            jarResolver
+                .resolveJar(
+                    repository,
+                    Coordinates.parse("com.foo:bar:1.0"),
+                    newMetadata("com.foo", "bar", "1.0", "2023"))
+                .join());
+
+    final var dir = m2Repo.resolve("com/foo/bar/1.0");
+    if (Files.isDirectory(dir)) {
+      try (final var files = Files.list(dir)) {
+        final var leftovers = files.filter(f -> f.toString().endsWith(".tmp")).toList();
+        assertEquals(List.of(), leftovers, "no temp files may be left behind");
+      }
+    }
   }
 
   private void mockRemoteJar(String path, byte[] content) {

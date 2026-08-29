@@ -62,10 +62,15 @@ public class MetadataResolver {
       final var uri = remoteUri(repository, spec, "maven-metadata.xml");
       final var uriSha1 = remoteUri(repository, spec, "maven-metadata.xml.sha1");
 
-      return fetcher
-          .get(uri, repository.authz(), target.getParent())
+      // thenCombine only runs when both succeed, so if one fails the other's downloaded temp file
+      // would strand in the repository. Each future deletes its own temp when the combined result
+      // fails.
+      final var metadataFetch = fetcher.get(uri, repository.authz(), target.getParent());
+      final var sha1Fetch = fetcher.get(uriSha1, repository.authz(), target.getParent());
+
+      return metadataFetch
           .thenCombine(
-              fetcher.get(uriSha1, repository.authz(), target.getParent()),
+              sha1Fetch,
               (tmp, tmpSha1) -> {
                 try {
                   final var actualSha1 = computeSha1(tmp);
@@ -90,6 +95,13 @@ public class MetadataResolver {
                   deleteIfExists(tmp);
                   deleteIfExists(tmpSha1);
                   throw new CompletionException(e);
+                }
+              })
+          .whenComplete(
+              (metadata, ex) -> {
+                if (ex != null) {
+                  deleteFetched(metadataFetch);
+                  deleteFetched(sha1Fetch);
                 }
               });
     } catch (Exception e) {
@@ -163,6 +175,19 @@ public class MetadataResolver {
     }
 
     return sb.toString();
+  }
+
+  /**
+   * Deletes the temp file a fetch downloaded, once the resolution around it has failed. A fetch
+   * that failed already cleaned up after itself; this is for the one that succeeded while the
+   * other failed, whose file would otherwise be left behind in the repository.
+   *
+   * @param fetch a completed or failed fetch
+   */
+  private static void deleteFetched(CompletableFuture<Path> fetch) {
+    if (fetch.isDone() && !fetch.isCompletedExceptionally() && !fetch.isCancelled()) {
+      deleteIfExists(fetch.join());
+    }
   }
 
   private static void deleteIfExists(Path path) {

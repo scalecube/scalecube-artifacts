@@ -3,7 +3,8 @@ name: Branch CI
 on:
   push:
     paths-ignore:
-      - '.github/workflows/**'
+      # Workflow edits are NOT ignored: the os matrix is the only thing proving the file publishing
+      # works on Windows and macOS, so a change to it has to be able to run itself.
       - '*.md'
       - '*.txt'
     branches-ignore:

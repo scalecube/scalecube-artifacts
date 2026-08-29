@@ -68,10 +68,15 @@ public class JarResolver {
       final var uri = remoteUri(repository, spec, filename);
       final var uriSha1 = remoteUri(repository, spec, filename + ".sha1");
 
-      return fetcher
-          .get(uri, repository.authz(), target.getParent())
+      // Both fetches start now. thenCombine only runs when both succeed, so if one fails the
+      // other's downloaded temp file would never be handed to the block below and would strand in
+      // the repository. Each future deletes its own temp when the combined result fails.
+      final var jarFetch = fetcher.get(uri, repository.authz(), target.getParent());
+      final var sha1Fetch = fetcher.get(uriSha1, repository.authz(), target.getParent());
+
+      return jarFetch
           .thenCombine(
-              fetcher.get(uriSha1, repository.authz(), target.getParent()),
+              sha1Fetch,
               (tmp, tmpSha1) -> {
                 try {
                   final var actualSha1 = computeSha1(tmp);
@@ -90,6 +95,13 @@ public class JarResolver {
                   deleteIfExists(tmp);
                   deleteIfExists(tmpSha1);
                   throw new CompletionException(e);
+                }
+              })
+          .whenComplete(
+              (path, ex) -> {
+                if (ex != null) {
+                  deleteFetched(jarFetch);
+                  deleteFetched(sha1Fetch);
                 }
               });
     } catch (Exception e) {
@@ -184,19 +196,25 @@ public class JarResolver {
   private static String resolvedVersion(Coordinates coordinates, Metadata metadata) {
     final var snapshot = metadata.versioning() == null ? null : metadata.versioning().snapshot();
 
-    if (coordinates.snapshot()
-        && snapshot != null
-        && snapshot.timestamp() != null
-        && snapshot.buildNumber() != null) {
-      // e.g. 2.1.0-20260225.142030-45
-      return coordinates.baseVersion()
-          + "-"
-          + requireToken(snapshot.timestamp(), "timestamp")
-          + "-"
-          + requireToken(snapshot.buildNumber(), "buildNumber");
+    if (!coordinates.snapshot()) {
+      return coordinates.version();
     }
 
-    return coordinates.version();
+    if (snapshot == null || snapshot.timestamp() == null || snapshot.buildNumber() == null) {
+      // Falling back to the requested version would name the file <artifactId>-<version>-SNAPSHOT
+      // .jar, which is the slot `mvn install` owns. Writing it is what this whole component exists
+      // to stop, so a snapshot whose metadata names no build is an error, not a base-named write.
+      throw new IllegalStateException(
+          "No snapshot build in metadata for " + coordinates.spec() + ", refusing to write "
+              + coordinates.fileName(coordinates.version()));
+    }
+
+    // e.g. 2.1.0-20260225.142030-45
+    return coordinates.baseVersion()
+        + "-"
+        + requireToken(snapshot.timestamp(), "timestamp")
+        + "-"
+        + requireToken(snapshot.buildNumber(), "buildNumber");
   }
 
   /**
@@ -327,6 +345,19 @@ public class JarResolver {
     }
 
     return sb.toString();
+  }
+
+  /**
+   * Deletes the temp file a fetch downloaded, once the resolution around it has failed. A fetch
+   * that failed already cleaned up after itself; this is for the one that succeeded while the
+   * other failed, whose file would otherwise be left behind in the repository.
+   *
+   * @param fetch a completed or failed fetch
+   */
+  private static void deleteFetched(CompletableFuture<Path> fetch) {
+    if (fetch.isDone() && !fetch.isCompletedExceptionally() && !fetch.isCancelled()) {
+      deleteIfExists(fetch.join());
+    }
   }
 
   private static void deleteIfExists(Path path) {
