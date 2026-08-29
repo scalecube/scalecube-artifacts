@@ -31,12 +31,12 @@ class MetadataResolverTest {
     server.start();
 
     repository =
-        new Repository(
-            "central",
-            "http://localhost:" + server.getAddress().getPort(),
-            "Bearer cool-token",
-            m2Repo.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:" + server.getAddress().getPort())
+            .authz("Bearer cool-token")
+            .repoDir(m2Repo.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     metadataResolver = new MetadataResolver(new Fetcher(HttpClient.newHttpClient()));
   }

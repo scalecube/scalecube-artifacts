@@ -140,6 +140,7 @@ public class Metadata {
 
     private String timestamp;
     private String buildNumber;
+    private boolean localCopy;
 
     public Snapshot() {}
 
@@ -161,11 +162,26 @@ public class Metadata {
       return this;
     }
 
+    /**
+     * Whether this snapshot was installed locally by {@code mvn install} rather than downloaded.
+     * Maven writes it into {@code maven-metadata-local.xml}, and it is what makes a locally built
+     * jar take precedence over any remote build.
+     */
+    public boolean localCopy() {
+      return localCopy;
+    }
+
+    public Snapshot localCopy(boolean localCopy) {
+      this.localCopy = localCopy;
+      return this;
+    }
+
     @Override
     public String toString() {
       return new StringJoiner(", ", Snapshot.class.getSimpleName() + "[", "]")
           .add("timestamp='" + timestamp + "'")
           .add("buildNumber='" + buildNumber + "'")
+          .add("localCopy=" + localCopy)
           .toString();
     }
   }

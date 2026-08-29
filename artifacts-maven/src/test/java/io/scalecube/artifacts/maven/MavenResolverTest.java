@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -35,12 +36,12 @@ class MavenResolverTest {
   @Test
   void resolve_release_remotePolicy_downloadsWhenNoLocal() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -51,25 +52,25 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("fake.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(fakeJar, result);
     verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver).resolveJar(repository, meta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
   void resolve_snapshot_remotePolicy_downloadsWhenMetadataChanged() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -92,68 +93,63 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(newJar, result);
     verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver).resolveJar(repository, remoteMeta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   @Test
-  void resolve_snapshot_remotePolicy_returnsLocalWhenMetadataUnchanged() {
+  void resolve_snapshot_remotePolicy_ignoresLocallyInstalledBuild() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer test-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
     String spec = "com.foo:bar:1.0-SNAPSHOT";
 
-    Metadata sameMeta = createSnapshotMetadata("20231010120000", "20231010.120000", "5");
-
-    when(metadataResolver.getCurrent(repository, spec)).thenReturn(sameMeta);
-    when(metadataResolver.resolveRemote(repository, spec))
-        .thenReturn(CompletableFuture.completedFuture(sameMeta));
-
-    Path localJar = tempCacheDir.resolve("bar-1.0-20231010.120000-5.jar");
-
-    // Critical: make the file "exist" in the eyes of Files.exists()
-    when(jarResolver.getLocalJar(repository, spec)).thenReturn(localJar);
-    when(jarResolver.resolveLocalJar(repository, spec)).thenReturn(localJar);
-
-    // Simulate that the JAR physically exists
-    // Option A: actually create empty file (realistic)
+    // A build produced by `mvn install` is present, and under REMOTE it must be irrelevant:
+    // the remote is still checked and its build is what gets served.
+    Path installedJar = tempCacheDir.resolve("bar-1.0-SNAPSHOT.jar");
     try {
-      Files.createFile(localJar);
+      Files.createFile(installedJar);
     } catch (IOException e) {
       fail("Cannot create test file", e);
     }
 
-    // Act
+    Metadata metadata = new Metadata().version("1.0-SNAPSHOT");
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(CompletableFuture.completedFuture(metadata));
+
+    Path remoteJar = tempCacheDir.resolve("bar-1.0-20260225.142030-45.jar");
+    when(jarResolver.resolveJar(eq(repository), any(), eq(metadata)))
+        .thenReturn(CompletableFuture.completedFuture(remoteJar));
+
     Path result = mavenResolver.resolve(spec).join();
 
-    // Assert
-    assertEquals(localJar, result);
+    assertEquals(remoteJar, result);
+    verify(jarResolver, never()).getInstalledJar(any(), any());
     verify(metadataResolver).resolveRemote(repository, spec);
-    verify(jarResolver, never()).resolveJar(any(), any()); // ← now passes
   }
 
   @Test
   void resolve_snapshot_remotePolicy_downloadsWhenLocalJarMissingEvenIfMetadataUnchanged() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -174,24 +170,24 @@ class MavenResolverTest {
     when(jarResolver.resolveLocalJar(repository, spec)).thenReturn(localJar);
 
     Path downloadedJar = tempCacheDir.resolve("downloaded.jar");
-    when(jarResolver.resolveJar(repository, sameMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(sameMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     Path result = mavenResolver.resolve(spec).join();
 
     assertEquals(downloadedJar, result);
-    verify(jarResolver).resolveJar(repository, sameMeta); // fallback download
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(sameMeta)); // fallback download
   }
 
   @Test
   void resolve_localPolicy_returnsLocalJarForRelease() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.LOCAL);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.LOCAL);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -209,12 +205,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_metadataChanged_lastUpdatedNewer_downloadsNewJar() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -229,7 +225,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     // Act
@@ -237,18 +233,18 @@ class MavenResolverTest {
 
     // Assert
     assertEquals(newJar, result);
-    verify(jarResolver).resolveJar(repository, remoteMeta); // download triggered
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta)); // download triggered
   }
 
   @Test
   void resolve_snapshot_remotePolicy_localMetadataMissing_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -261,7 +257,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path downloadedJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
@@ -269,18 +265,18 @@ class MavenResolverTest {
 
     // Assert
     assertEquals(downloadedJar, result);
-    verify(jarResolver).resolveJar(repository, remoteMeta);
+    verify(jarResolver).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   @Test
   void resolve_snapshot_remotePolicy_remoteMissingSnapshot_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -297,7 +293,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path downloadedJar = tempCacheDir.resolve("some.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
@@ -310,12 +306,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_localMissingLastUpdated_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -333,7 +329,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path newJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(CompletableFuture.completedFuture(newJar));
 
     // Act
@@ -346,12 +342,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_localAndRemoteMissingLastUpdated_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -367,27 +363,27 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(emptyMeta));
 
     Path downloadedJar = tempCacheDir.resolve("bar-1.0-some-timestamp.jar");
-    when(jarResolver.resolveJar(any(), any()))
+    when(jarResolver.resolveJar(any(), any(), any()))
         .thenReturn(CompletableFuture.completedFuture(downloadedJar));
 
     // Act
     Path result = mavenResolver.resolve(spec).join();
 
     // Assert
-    verify(jarResolver).resolveJar(any(), any()); // fallback download
+    verify(jarResolver).resolveJar(any(), any(), any()); // fallback download
   }
 
   @Test
   void resolve_release_remotePolicy_retriesOn404ThenSucceeds() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -398,7 +394,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(meta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.2.3.jar");
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
@@ -407,20 +403,20 @@ class MavenResolverTest {
 
     assertEquals(fakeJar, result);
     verify(metadataResolver, times(2)).resolveRemote(repository, spec);
-    verify(jarResolver, times(2)).resolveJar(repository, meta);
+    verify(jarResolver, times(2)).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
   void resolve_release_remotePolicy_exhaustsRetriesOn404() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -429,27 +425,27 @@ class MavenResolverTest {
 
     when(metadataResolver.resolveRemote(repository, spec))
         .thenReturn(CompletableFuture.completedFuture(meta));
-    when(jarResolver.resolveJar(repository, meta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))));
 
     assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
 
     verify(metadataResolver, times(3)).resolveRemote(repository, spec);
-    verify(jarResolver, times(3)).resolveJar(repository, meta);
+    verify(jarResolver, times(3)).resolveJar(eq(repository), any(), eq(meta));
   }
 
   @Test
   void resolve_snapshot_remotePolicy_retriesOn404ThenSucceeds() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -461,7 +457,7 @@ class MavenResolverTest {
         .thenReturn(CompletableFuture.completedFuture(remoteMeta));
 
     Path fakeJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
-    when(jarResolver.resolveJar(repository, remoteMeta))
+    when(jarResolver.resolveJar(eq(repository), any(), eq(remoteMeta)))
         .thenReturn(
             CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
         .thenReturn(CompletableFuture.completedFuture(fakeJar));
@@ -470,7 +466,7 @@ class MavenResolverTest {
 
     assertEquals(fakeJar, result);
     verify(metadataResolver, times(2)).resolveRemote(repository, spec);
-    verify(jarResolver, times(2)).resolveJar(repository, remoteMeta);
+    verify(jarResolver, times(2)).resolveJar(eq(repository), any(), eq(remoteMeta));
   }
 
   private Metadata createSnapshotMetadata(
@@ -481,5 +477,64 @@ class MavenResolverTest {
             new Metadata.Versioning()
                 .lastUpdated(lastUpdated)
                 .snapshot(new Metadata.Snapshot().timestamp(timestamp).buildNumber(buildNumber)));
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_retriesWhenMetadataItselfIs404() {
+    Repository repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Basic dTpw")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+
+    Metadata meta = createSnapshotMetadata("20231010120000", "20231010.120000", "5");
+
+    // A freshly published artifact 404s on its metadata before its jar exists at all.
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new FetchException(404))))
+        .thenReturn(CompletableFuture.completedFuture(meta));
+
+    Path fakeJar = tempCacheDir.resolve("bar-1.0-20231010.120000-5.jar");
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
+        .thenReturn(CompletableFuture.completedFuture(fakeJar));
+
+    Path result = mavenResolver.resolve(spec).join();
+
+    assertEquals(fakeJar, result);
+    verify(metadataResolver, times(2)).resolveRemote(repository, spec);
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_exhaustsRetriesWhenMetadataStays404() {
+    Repository repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Basic dTpw")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new FetchException(404))));
+
+    assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
+    verify(metadataResolver, times(3)).resolveRemote(repository, spec);
+    verify(jarResolver, never()).resolveJar(any(), any(), any());
   }
 }

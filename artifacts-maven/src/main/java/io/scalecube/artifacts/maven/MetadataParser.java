@@ -107,6 +107,10 @@ public class MetadataParser {
                 metadata.versioning().snapshot().buildNumber(text);
                 break;
 
+              case "localCopy":
+                metadata.versioning().snapshot().localCopy(Boolean.parseBoolean(text));
+                break;
+
               case "extension":
                 if (snapshotVersion != null) {
                   snapshotVersion.extension(text);

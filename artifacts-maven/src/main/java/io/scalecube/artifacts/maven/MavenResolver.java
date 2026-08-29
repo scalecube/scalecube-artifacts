@@ -1,20 +1,24 @@
 package io.scalecube.artifacts.maven;
 
 import io.scalecube.artifacts.api.ArtifactResolver;
-import java.nio.file.Files;
+import java.lang.System.Logger.Level;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 
 /**
  * Entry point for artifact resolution by GAV coordinates. Orchestrates maven metadata checks and
  * JAR downloads based on the provided {@link UpdatePolicy}.
+ *
+ * <p>The two policies do not overlap. {@link UpdatePolicy#REMOTE} always checks remote metadata
+ * and downloads when the remote is newer; whether a locally installed build exists is irrelevant.
+ * {@link UpdatePolicy#LOCAL} serves the locally installed build and never uses the network, and
+ * throws when there is none.
  */
 public class MavenResolver implements ArtifactResolver {
 
-  private static final long MAX_DELAY_MS = 60_000L;
+  private static final System.Logger LOGGER = System.getLogger(MavenResolver.class.getName());
 
   private final Repository repository;
   private final MetadataResolver metadataResolver;
@@ -23,10 +27,15 @@ public class MavenResolver implements ArtifactResolver {
   public MavenResolver(Repository repository) {
     this(
         repository,
-        new MetadataResolver(
-            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())),
-        new JarResolver(
-            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())));
+        new MetadataResolver(newFetcher(repository)),
+        new JarResolver(newFetcher(repository)));
+  }
+
+  private static Fetcher newFetcher(Repository repository) {
+    return new Fetcher(
+        repository.retryMaxAttempts(),
+        repository.retryInitialDelayMs(),
+        repository.retryMaxDelayMs());
   }
 
   public MavenResolver(
@@ -44,96 +53,63 @@ public class MavenResolver implements ArtifactResolver {
    */
   @Override
   public CompletableFuture<Path> resolve(String spec) {
-    final var split = spec.split(":");
-
-    if (split.length != 3) {
-      throw new IllegalArgumentException("Wrong format: " + spec);
+    final Coordinates coordinates;
+    try {
+      coordinates = Coordinates.parse(spec);
+    } catch (RuntimeException e) {
+      return CompletableFuture.failedFuture(e);
     }
 
-    final var version = split[2];
-
-    if (!version.endsWith("-SNAPSHOT")) {
+    try {
       if (repository.repoUpdatePolicy() == UpdatePolicy.LOCAL) {
         return CompletableFuture.completedFuture(jarResolver.resolveLocalJar(repository, spec));
-      } else {
-        return doDownload(spec, 1);
       }
-    } else {
-      if (repository.repoUpdatePolicy() == UpdatePolicy.LOCAL) {
-        return CompletableFuture.completedFuture(jarResolver.resolveLocalJar(repository, spec));
-      } else {
-        return doResolveSnapshot(spec, 1);
-      }
+    } catch (RuntimeException e) {
+      return CompletableFuture.failedFuture(e);
     }
+
+    return doResolve(coordinates, 1);
   }
 
-  private CompletableFuture<Path> doDownload(String spec, int attempt) {
+  private CompletableFuture<Path> doResolve(Coordinates coordinates, int attempt) {
+    return jar(coordinates).exceptionallyCompose(ex -> retryOn404(ex, coordinates, attempt));
+  }
+
+  private CompletableFuture<Path> jar(Coordinates coordinates) {
     return metadataResolver
-        .resolveRemote(repository, spec)
-        .thenCompose(
-            metadata ->
-                jarResolver
-                    .resolveJar(repository, metadata)
-                    .exceptionallyCompose(
-                        ex -> retryOn404(ex, attempt, () -> doDownload(spec, attempt + 1))));
+        .resolveRemote(repository, coordinates.spec())
+        .thenCompose(metadata -> jarResolver.resolveJar(repository, coordinates, metadata));
   }
 
-  private CompletableFuture<Path> doResolveSnapshot(String spec, int attempt) {
-    final var current = metadataResolver.getCurrent(repository, spec);
-    return metadataResolver
-        .resolveRemote(repository, spec)
-        .thenCompose(
-            metadata -> {
-              if (isMetadataChanged(current, metadata)) {
-                return jarResolver
-                    .resolveJar(repository, metadata)
-                    .exceptionallyCompose(
-                        ex -> retryOn404(ex, attempt, () -> doResolveSnapshot(spec, attempt + 1)));
-              } else {
-                final var localJar = jarResolver.getLocalJar(repository, spec);
-                if (!Files.exists(localJar)) {
-                  return jarResolver
-                      .resolveJar(repository, metadata)
-                      .exceptionallyCompose(
-                          ex ->
-                              retryOn404(ex, attempt, () -> doResolveSnapshot(spec, attempt + 1)));
-                } else {
-                  return CompletableFuture.completedFuture(localJar);
-                }
-              }
-            });
-  }
-
-  private CompletableFuture<Path> retryOn404(
-      Throwable ex, int attempt, Supplier<CompletableFuture<Path>> next) {
+  /**
+   * Retries the whole chain on 404, not just the jar. A freshly published artifact takes time to
+   * appear in the registry, and its metadata answers 404 before its jar does, so retrying only the
+   * jar never helped.
+   */
+  private CompletableFuture<Path> retryOn404(Throwable ex, Coordinates coordinates, int attempt) {
     final Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
     if (cause instanceof FetchException fe
         && fe.statusCode() == 404
         && attempt < repository.retryMaxAttempts()) {
       final long delayMs =
-          Math.min(repository.retryInitialDelayMs() << (attempt - 1), MAX_DELAY_MS);
+          Math.min(repository.retryInitialDelayMs() << (attempt - 1), repository.retryMaxDelayMs());
+      LOGGER.log(
+          Level.INFO,
+          () ->
+              "Not published yet: "
+                  + coordinates
+                  + ", retrying in "
+                  + delayMs
+                  + "ms (attempt "
+                  + attempt
+                  + "/"
+                  + repository.retryMaxAttempts()
+                  + ")");
       return CompletableFuture.runAsync(
               () -> {}, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
-          .thenCompose(ignored -> next.get());
+          .thenCompose(ignored -> doResolve(coordinates, attempt + 1));
     }
     return CompletableFuture.failedFuture(
         ex instanceof CompletionException ? ex : new CompletionException(ex));
-  }
-
-  private static boolean isMetadataChanged(Metadata local, Metadata remote) {
-    if (local == null
-        || local.versioning() == null
-        || remote == null
-        || remote.versioning() == null) {
-      return true;
-    }
-
-    final var localLastUpdated = local.versioning().lastUpdated();
-    final var remoteLastUpdated = remote.versioning().lastUpdated();
-    if (localLastUpdated == null || remoteLastUpdated == null) {
-      return true;
-    }
-
-    return !localLastUpdated.equals(remoteLastUpdated);
   }
 }

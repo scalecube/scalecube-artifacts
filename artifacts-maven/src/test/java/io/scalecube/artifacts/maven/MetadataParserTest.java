@@ -1,7 +1,10 @@
 package io.scalecube.artifacts.maven;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import io.scalecube.artifacts.maven.Metadata.Snapshot;
@@ -13,6 +16,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.xml.stream.XMLStreamException;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -336,5 +340,31 @@ class MetadataParserTest {
                                 .lastUpdated("20260612090000"))));
 
     return builder.build();
+  }
+
+  @Test
+  void shouldParseLocalCopyFlag() throws Exception {
+    final var xml =
+        "<metadata><groupId>com.foo</groupId><artifactId>bar</artifactId>"
+            + "<versioning><snapshot><localCopy>true</localCopy></snapshot></versioning>"
+            + "</metadata>";
+
+    final var metadata =
+        MetadataParser.parseMetadata(new ByteArrayInputStream(xml.getBytes(UTF_8)));
+
+    assertTrue(metadata.versioning().snapshot().localCopy(), "localCopy");
+  }
+
+  @Test
+  void shouldDefaultLocalCopyToFalse() throws Exception {
+    final var xml =
+        "<metadata><groupId>com.foo</groupId><artifactId>bar</artifactId>"
+            + "<versioning><snapshot><timestamp>20260225.142030</timestamp>"
+            + "<buildNumber>45</buildNumber></snapshot></versioning></metadata>";
+
+    final var metadata =
+        MetadataParser.parseMetadata(new ByteArrayInputStream(xml.getBytes(UTF_8)));
+
+    assertFalse(metadata.versioning().snapshot().localCopy(), "localCopy");
   }
 }

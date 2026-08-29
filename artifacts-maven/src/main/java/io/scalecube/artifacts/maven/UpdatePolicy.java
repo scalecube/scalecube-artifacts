@@ -6,9 +6,16 @@ package io.scalecube.artifacts.maven;
  */
 public enum UpdatePolicy {
 
-  /** Always check remote metadata. If remote is newer, download. */
+  /**
+   * Always check remote metadata, and download when the remote is newer. Whether a locally
+   * installed build exists is irrelevant under this policy.
+   */
   REMOTE,
 
-  /** Only use files where {@code localCopy: true} exists. Do not hit the network. */
+  /**
+   * Serve the build installed by {@code mvn install}, and never use the network. Throws when there
+   * is no locally installed build: setting this policy is a statement that the artifact is present
+   * locally, so recovering from the remote would defeat the point.
+   */
   LOCAL
 }

@@ -3,7 +3,8 @@ name: Branch CI
 on:
   push:
     paths-ignore:
-      - '.github/workflows/**'
+      # Workflow edits are NOT ignored: the os matrix is the only thing proving the file publishing
+      # works on Windows and macOS, so a change to it has to be able to run itself.
       - '*.md'
       - '*.txt'
     branches-ignore:
@@ -11,8 +12,15 @@ on:
 
 jobs:
   build:
-    name: Branch CI
-    runs-on: ubuntu-latest
+    # File publishing is platform-sensitive: on Unix an atomic move is a rename, on Windows it
+    # cannot replace a file another thread holds open. All three runners are built so a change
+    # that only breaks one of them is caught here.
+    name: Branch CI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v3
@@ -30,8 +38,10 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
       - name: Maven Build
+        shell: bash
         run: mvn clean install -DskipTests=true -Dmaven.javadoc.skip=true -B -V
         env:
           GITHUB_TOKEN: ${{ secrets.ORGANIZATION_TOKEN }}
       - name: Maven Verify
+        shell: bash
         run: mvn verify -B

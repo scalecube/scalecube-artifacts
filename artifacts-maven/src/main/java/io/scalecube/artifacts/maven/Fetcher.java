@@ -30,30 +30,41 @@ public class Fetcher {
 
   private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
 
-  private static final int DEFAULT_MAX_ATTEMPTS = 10;
-  private static final long DEFAULT_INITIAL_DELAY_MS = 3000L;
-  private static final long MAX_DELAY_MS = 60_000L;
-
   private final HttpClient client;
   private final int maxAttempts;
   private final long initialDelayMs;
+  private final long maxDelayMs;
 
   public Fetcher() {
-    this(HTTP_CLIENT, DEFAULT_MAX_ATTEMPTS, DEFAULT_INITIAL_DELAY_MS);
+    this(HTTP_CLIENT);
   }
 
   public Fetcher(HttpClient client) {
-    this(client, DEFAULT_MAX_ATTEMPTS, DEFAULT_INITIAL_DELAY_MS);
+    this(
+        client,
+        Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
+        Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
+        Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS);
   }
 
-  public Fetcher(int maxAttempts, long initialDelayMs) {
-    this(HTTP_CLIENT, maxAttempts, initialDelayMs);
+  public Fetcher(int maxAttempts, long initialDelayMs, long maxDelayMs) {
+    this(HTTP_CLIENT, maxAttempts, initialDelayMs, maxDelayMs);
   }
 
-  public Fetcher(HttpClient client, int maxAttempts, long initialDelayMs) {
+  /**
+   * Creates a fetcher with explicit retry settings. The defaults for these come from {@link
+   * Repository}, which is where they are configured from properties.
+   *
+   * @param client http client
+   * @param maxAttempts total attempts, including the first one
+   * @param initialDelayMs delay before the first retry, doubled on each further attempt
+   * @param maxDelayMs ceiling for the doubling delay
+   */
+  public Fetcher(HttpClient client, int maxAttempts, long initialDelayMs, long maxDelayMs) {
     this.client = client;
     this.maxAttempts = maxAttempts;
     this.initialDelayMs = initialDelayMs;
+    this.maxDelayMs = maxDelayMs;
   }
 
   /**
@@ -80,13 +91,13 @@ public class Fetcher {
       return CompletableFuture.failedFuture(e);
     }
 
+    final var request = HttpRequest.newBuilder(uri).GET();
+    if (authz != null && !authz.isEmpty()) {
+      request.header("Authorization", authz);
+    }
+
     return client
-        .sendAsync(
-            HttpRequest.newBuilder(uri)
-                .header("Authorization", authz != null ? authz : "")
-                .GET()
-                .build(),
-            BodyHandlers.ofFile(tmp, CREATE, WRITE, TRUNCATE_EXISTING))
+        .sendAsync(request.build(), BodyHandlers.ofFile(tmp, CREATE, WRITE, TRUNCATE_EXISTING))
         .handle(
             (response, ex) -> {
               if (ex != null || response.statusCode() != 200) {
@@ -95,7 +106,7 @@ public class Fetcher {
                     (ex != null || RETRYABLE_STATUSES.contains(response.statusCode()))
                         && attempt < maxAttempts;
                 if (shouldRetry) {
-                  final long delayMs = Math.min(initialDelayMs << (attempt - 1), MAX_DELAY_MS);
+                  final long delayMs = Math.min(initialDelayMs << (attempt - 1), maxDelayMs);
                   return CompletableFuture.runAsync(
                           () -> {},
                           CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
