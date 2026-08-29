@@ -11,23 +11,9 @@ import java.util.concurrent.TimeUnit;
  * Entry point for artifact resolution by GAV coordinates. Orchestrates maven metadata checks and
  * JAR downloads based on the provided {@link UpdatePolicy}.
  *
- * <h2>Resolution order</h2>
- *
- * <ol>
- *   <li>a locally installed SNAPSHOT - one that {@code mvn install} wrote, marked {@code
- *       <localCopy>true</localCopy>} in {@code maven-metadata-local.xml} - always wins. That is
- *       Maven's own rule, and it is what lets a developer build a service locally and then run a
- *       suite against that build;
- *   <li>otherwise, under {@link UpdatePolicy#REMOTE}, the build named by the repository's {@code
- *       maven-metadata.xml}, served from the local repository if that exact build is already cached
- *       and downloaded otherwise;
- *   <li>under {@link UpdatePolicy#LOCAL} the network is never touched: the installed build, else
- *       the newest one already downloaded, else a failure.
- * </ol>
- *
- * <p>Resolution never falls back to a stale cached build when the remote is reachable but the
- * artifact is missing. Silently running an old jar is far harder to diagnose than a failed
- * resolution.
+ * <p>A build installed by {@code mvn install} wins over any remote build. Under {@link
+ * UpdatePolicy#LOCAL} the network is never used. Resolution does not fall back to a stale cached
+ * build when the remote is reachable but the artifact is missing.
  */
 public class MavenResolver implements ArtifactResolver {
 
@@ -92,28 +78,15 @@ public class MavenResolver implements ArtifactResolver {
   }
 
   private CompletableFuture<Path> jar(Coordinates coordinates) {
-    final var spec = coordinates.spec();
-
-    // A release has no version-level maven-metadata.xml in a Maven repository - asking for one only
-    // buys a 404 - and its file name is fully determined by the coordinate.
-    if (!coordinates.snapshot()) {
-      final var metadata =
-          new Metadata()
-              .groupId(coordinates.groupId())
-              .artifactId(coordinates.artifactId())
-              .version(coordinates.version());
-      return jarResolver.resolveJar(repository, metadata);
-    }
-
     return metadataResolver
-        .resolveRemote(repository, spec)
+        .resolveRemote(repository, coordinates.spec())
         .thenCompose(metadata -> jarResolver.resolveJar(repository, metadata));
   }
 
   /**
-   * A freshly published artifact propagates through the registry with a lag, during which both its
-   * metadata and its jar answer {@code 404}. Retrying the whole chain - not just the jar - is what
-   * makes that lag survivable, because the metadata is what 404s first.
+   * Retries the whole chain on 404, not just the jar. A freshly published artifact takes time to
+   * appear in the registry, and its metadata answers 404 before its jar does, so retrying only the
+   * jar never helped.
    */
   private CompletableFuture<Path> retryOn404(Throwable ex, Coordinates coordinates, int attempt) {
     final Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;

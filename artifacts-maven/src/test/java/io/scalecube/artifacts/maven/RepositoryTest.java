@@ -5,15 +5,21 @@ import static io.scalecube.artifacts.maven.Repository.REPO_ID_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_PASSWORD_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_RETRY_MAX_ATTEMPTS_PROP_NAME;
+import static io.scalecube.artifacts.maven.Repository.REPO_SETTINGS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_UPDATE_POLICY_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_URL_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_USERNAME_PROP_NAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class RepositoryTest {
 
@@ -86,6 +92,47 @@ class RepositoryTest {
 
     assertThrows(
         IllegalStateException.class, () -> Repository.unwrap("${env.GITHUB_TOKEN}", properties));
+  }
+
+  @Test
+  void testAbsentSettingsFileYieldsNoCredentials(@TempDir Path dir) {
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, dir.resolve("nope.xml").toString());
+
+    assertNull(Repository.newInstance(properties).authz(), "authz");
+  }
+
+  @Test
+  void testSettingsWithoutMatchingServerYieldsNoCredentials(@TempDir Path dir) throws IOException {
+    final var settings = dir.resolve("settings.xml");
+    Files.writeString(settings, "<settings><servers><server><id>other</id>"
+        + "<username>u</username><password>p</password></server></servers></settings>");
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
+
+    assertNull(Repository.newInstance(properties).authz(), "authz");
+  }
+
+  @Test
+  void testCredentialsReadFromSettingsPath(@TempDir Path dir) throws IOException {
+    final var settings = dir.resolve("settings.xml");
+    Files.writeString(settings, "<settings><servers><server><id>github</id>"
+        + "<username>u</username><password>p</password></server></servers></settings>");
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_ID_PROP_NAME, "github");
+    properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
+    properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
+
+    final var authz = Repository.newInstance(properties).authz();
+
+    assertNotNull(authz, "authz");
+    assertEquals("Basic dTpw", authz, "authz");
   }
 
   private static Properties credentialedProps() {

@@ -1,12 +1,9 @@
 package io.scalecube.artifacts.maven;
 
-import java.util.regex.Pattern;
-
 /**
- * Parsed {@code groupId:artifactId:version} coordinate.
- *
- * <p>Every token is checked against an allow-list before it is concatenated into a filesystem path
- * or a URL, so a malformed coordinate cannot escape the local repository or reshape the request.
+ * Parsed {@code groupId:artifactId:version} coordinate. Replaces the {@code spec.split(":")} that
+ * was repeated in {@link Repository}, and adds the snapshot and base-version handling that {@link
+ * JarResolver} needs to tell a locally installed build from a timestamped one.
  *
  * @param groupId group id, e.g. {@code com.example}
  * @param artifactId artifact id, e.g. {@code my-lib}
@@ -15,8 +12,6 @@ import java.util.regex.Pattern;
 public record Coordinates(String groupId, String artifactId, String version) {
 
   static final String SNAPSHOT = "-SNAPSHOT";
-
-  private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9._+-]+");
 
   public Coordinates {
     groupId = require(groupId, "groupId");
@@ -29,7 +24,7 @@ public record Coordinates(String groupId, String artifactId, String version) {
    *
    * @param spec artifact coordinate
    * @return parsed coordinates
-   * @throws IllegalArgumentException if {@code spec} is not three non-blank, well-formed tokens
+   * @throws IllegalArgumentException if spec is not three non-blank parts
    */
   public static Coordinates parse(String spec) {
     if (spec == null) {
@@ -46,12 +41,16 @@ public record Coordinates(String groupId, String artifactId, String version) {
     return version.endsWith(SNAPSHOT);
   }
 
-  /** {@code 1.0} for {@code 1.0-SNAPSHOT}; the version itself for a release. */
+  /**
+   * Returns the version without the {@code -SNAPSHOT} suffix, which is the prefix that timestamped
+   * builds are named after: {@code 1.0} for {@code 1.0-SNAPSHOT}. Returns the version unchanged for
+   * a release.
+   */
   public String baseVersion() {
     return snapshot() ? version.substring(0, version.length() - SNAPSHOT.length()) : version;
   }
 
-  /** The repository-relative directory holding every file of this version. */
+  /** Returns the repository-relative directory holding every file of this version. */
   public String directory() {
     return groupId.replace('.', '/') + "/" + artifactId + "/" + version;
   }
@@ -72,9 +71,6 @@ public record Coordinates(String groupId, String artifactId, String version) {
   private static String require(String token, String name) {
     if (token == null || token.isBlank()) {
       throw new IllegalArgumentException("Artifact " + name + " must not be blank");
-    }
-    if (!TOKEN.matcher(token).matches() || token.contains("..")) {
-      throw new IllegalArgumentException("Illegal artifact " + name + ": '" + token + "'");
     }
     return token;
   }

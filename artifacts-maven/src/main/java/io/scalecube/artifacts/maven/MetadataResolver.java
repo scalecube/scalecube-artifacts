@@ -7,7 +7,6 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -19,8 +18,6 @@ import java.util.concurrent.CompletionException;
  * snapshot timestamps from both local and remote sources.
  */
 public class MetadataResolver {
-
-  private static final System.Logger LOGGER = System.getLogger(MetadataResolver.class.getName());
 
   private final Fetcher fetcher;
 
@@ -78,10 +75,8 @@ public class MetadataResolver {
                     throw new IOException("Checksum mismatch for maven-metadata");
                   }
 
-                  // Parse before publishing: the caller only needs the parsed value, and a
-                  // concurrent resolution of the same coordinate must not be able to observe this
-                  // file half-written. ATOMIC_MOVE makes publishing a single rename, so two
-                  // publishers cannot race on unlinking the target.
+                  // Parse before publishing, and publish with ATOMIC_MOVE. Without it the move
+                  // unlinks the target first, so two concurrent publishers race and one fails.
                   final Metadata metadata;
                   try (final var in = Files.newInputStream(tmp)) {
                     metadata = MetadataParser.parseMetadata(in);
@@ -95,12 +90,6 @@ public class MetadataResolver {
                   deleteIfExists(tmp);
                   deleteIfExists(tmpSha1);
                   throw new CompletionException(e);
-                }
-              })
-          .whenComplete(
-              (metadata, ex) -> {
-                if (ex != null) {
-                  LOGGER.log(Level.WARNING, () -> "Cannot resolve metadata " + uri);
                 }
               });
     } catch (Exception e) {

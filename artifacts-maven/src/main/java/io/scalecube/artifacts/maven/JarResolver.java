@@ -18,22 +18,10 @@ import java.util.concurrent.CompletionException;
  * Component that manages local storage of JAR files within the maven repository structure. Handles
  * checksum verification and atomic file moves to ensure repository integrity.
  *
- * <h2>Why nothing here writes {@code <artifactId>-<version>.jar}</h2>
- *
- * <p>The base-named file is Maven's slot for a build produced by {@code mvn install}; a remote
- * SNAPSHOT lives under its timestamped name. Publishing a base-named alias for a downloaded build
- * broke two things at once:
- *
- * <ul>
- *   <li>it overwrote a developer's locally built jar, so a suite that started the service silently
- *       exercised the remote build instead;
- *   <li>the alias was published with a non-atomic {@code Files.copy(REPLACE_EXISTING)}, so two
- *       concurrent resolutions of the same coordinate raced on one path - one thread would see
- *       {@code FileAlreadyExistsException}, or worse, hand a half-written jar to a class loader.
- * </ul>
- *
- * <p>Returning the timestamped path removes both by construction: the name identifies the build, so
- * a present file is always the right file, and publishing it is a single atomic rename.
+ * <p>Nothing here writes the base-named {@code <artifactId>-<version>.jar}. That name belongs to
+ * {@code mvn install}; a downloaded SNAPSHOT is stored under its timestamped name. Writing the base
+ * name overwrote locally built jars, and it was written with a non-atomic copy that two concurrent
+ * resolutions of the same coordinate raced on.
  */
 public class JarResolver {
 
@@ -46,9 +34,9 @@ public class JarResolver {
   }
 
   /**
-   * Resolves the JAR described by {@code metadata}, serving it from the local repository when that
-   * exact build is already cached and downloading it otherwise. Performs SHA-1 verification and
-   * publishes the download with an atomic move.
+   * Resolves the JAR described by the metadata. Serves it from the local repository when that exact
+   * build is already there and its checksum matches, downloads it otherwise, and publishes the
+   * download with an atomic move.
    *
    * @param repository artifact repository
    * @param metadata artifact metadata
@@ -65,26 +53,19 @@ public class JarResolver {
       final var target = localFile(repository, spec, filename);
       final var targetSha1 = localFile(repository, spec, filename + ".sha1");
 
-      // The file name identifies the build - a timestamped SNAPSHOT or an immutable release - so a
-      // cached copy needs no freshness check, only an integrity one. Anything we wrote has its
-      // .sha1 beside it; a jar without one, or one that disagrees, is re-downloaded rather than
-      // handed to a class loader.
+      // The file name identifies the build, so a cached copy needs no freshness check, only a
+      // checksum check. A jar with no .sha1 beside it, or one that disagrees, is downloaded again.
       if (isVerifiedCache(target, targetSha1)) {
-        LOGGER.log(Level.DEBUG, () -> "Serving " + spec + " from local repository: " + target);
         return CompletableFuture.completedFuture(target);
       }
 
       final var uri = remoteUri(repository, spec, filename);
       final var uriSha1 = remoteUri(repository, spec, filename + ".sha1");
 
-      LOGGER.log(Level.INFO, () -> "Downloading " + spec + " from " + uri);
-
-      final var jarFetch = fetcher.get(uri, repository.authz(), target.getParent());
-      final var sha1Fetch = fetcher.get(uriSha1, repository.authz(), target.getParent());
-
-      return jarFetch
+      return fetcher
+          .get(uri, repository.authz(), target.getParent())
           .thenCombine(
-              sha1Fetch,
+              fetcher.get(uriSha1, repository.authz(), target.getParent()),
               (tmp, tmpSha1) -> {
                 try {
                   final var actualSha1 = computeSha1(tmp);
@@ -94,8 +75,8 @@ public class JarResolver {
                     throw new IOException("Checksum mismatch for " + filename);
                   }
 
-                  // Atomic, so a concurrent reader sees either the previous file or this one, never
-                  // a partial write, and two concurrent publishers cannot collide.
+                  // Atomic: a concurrent reader sees the old file or the new one, never a partial
+                  // write, and two concurrent publishers cannot collide.
                   Files.move(tmp, target, REPLACE_EXISTING, ATOMIC_MOVE);
                   Files.move(tmpSha1, targetSha1, REPLACE_EXISTING, ATOMIC_MOVE);
 
@@ -106,8 +87,7 @@ public class JarResolver {
                   deleteIfExists(tmpSha1);
                   throw new CompletionException(e);
                 }
-              })
-          .whenComplete((path, ex) -> cleanUpOnFailure(ex, jarFetch, sha1Fetch));
+              });
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
@@ -155,13 +135,10 @@ public class JarResolver {
   }
 
   /**
-   * Returns the locally installed build of {@code spec}, or {@code null}.
-   *
-   * <p>This is Maven's {@code localCopy} rule: a SNAPSHOT that {@code mvn install} wrote into the
-   * local repository takes precedence over every remote build, which is what lets a developer build
-   * a service and then run a suite against that build. Both signals must agree - the base-named jar
-   * exists, and {@code maven-metadata-local.xml} marks the snapshot as a local copy - so a
-   * base-named file left behind by an older release of this library is not mistaken for one.
+   * Returns the build that {@code mvn install} put in the local repository, or null. Maven gives it
+   * precedence over any remote build. Both signals must agree - the base-named jar is there and
+   * {@code maven-metadata-local.xml} marks the snapshot as a local copy - so a base-named file left
+   * by an older release of this library is not taken for one.
    */
   public Path getInstalledJar(Repository repository, String spec) {
     final var coordinates = Coordinates.parse(spec);
@@ -256,21 +233,6 @@ public class JarResolver {
 
     // Standard GA Release name
     return artifactId + "-" + version + ".jar";
-  }
-
-  /**
-   * {@code thenCombine} never runs its function when one side fails, so the successful side's
-   * temporary file is abandoned. Delete it by asking the futures themselves rather than by globbing
-   * the directory: a glob would also hit the in-flight temporary files of a concurrent resolution
-   * of the same artifact, which is precisely the kind of cross-talk this class exists to avoid.
-   */
-  private static void cleanUpOnFailure(
-      Throwable ex, CompletableFuture<Path> jarFetch, CompletableFuture<Path> sha1Fetch) {
-    if (ex == null) {
-      return;
-    }
-    jarFetch.thenAccept(JarResolver::deleteIfExists);
-    sha1Fetch.thenAccept(JarResolver::deleteIfExists);
   }
 
   private static boolean isReadable(Path path) {

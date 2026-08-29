@@ -7,15 +7,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 import java.util.Properties;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import org.w3c.dom.Element;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
+import org.w3c.dom.NodeList;
 
 public record Repository(
     String id,
@@ -150,7 +147,9 @@ public record Repository(
   }
 
   /**
-   * The {@code settings.xml} to read credentials from; independent of {@link #REPO_DIR_PROP_NAME}.
+   * Returns the settings.xml to read credentials from. Independent of {@link #REPO_DIR_PROP_NAME},
+   * so pointing the local repository at another directory does not move the settings lookup with
+   * it.
    */
   private static Path repoSettings(Properties properties) {
     final var settings = getProperty(properties, REPO_SETTINGS_PROP_NAME);
@@ -161,15 +160,10 @@ public record Repository(
   }
 
   /**
-   * Resolves the {@code Authorization} header value, or {@code null} when no credentials are
-   * configured.
-   *
-   * <p>Missing credentials are not an error here. A public repository needs none, an artifact
-   * already in the local repository is served without a request at all, and when credentials really
-   * are required the registry's {@code 401} names the problem far more precisely than a failure
-   * raised before anything was attempted. This used to throw whenever {@code settings.xml} was
-   * absent, which broke CI images that pass {@code --settings} elsewhere and any caller that points
-   * {@link #REPO_DIR_PROP_NAME} at a scratch directory.
+   * Returns the {@code Authorization} header value, or null when no credentials are configured. A
+   * missing settings.xml or a missing {@code <server>} is not an error: a public repository needs
+   * none, and an artifact already in the local repository is served without any request. An
+   * unexpandable {@code ${env.NAME}} still fails, see {@link #unwrap}.
    */
   private static String repoAuthorization(Properties properties, String repoId) {
     final var username = getProperty(properties, REPO_USERNAME_PROP_NAME);
@@ -194,45 +188,34 @@ public record Repository(
     }
 
     try (var is = Files.newInputStream(settings)) {
-      final var document = documentBuilder().parse(is);
-      document.getDocumentElement().normalize();
+      final var factory = DocumentBuilderFactory.newInstance();
+      final var doc = factory.newDocumentBuilder().parse(is);
+      final var xPath = XPathFactory.newInstance().newXPath();
 
-      // Direct-child navigation rather than an XPath predicate built from `id`: the shape is fixed,
-      // and a repository id must never be able to steer the query.
-      for (final var server : children(child(document.getDocumentElement(), "servers"), "server")) {
-        if (!id.equals(unwrap(text(server, "id"), properties))) {
-          continue;
-        }
-        final var username = unwrap(text(server, "username"), properties);
-        final var password = unwrap(text(server, "password"), properties);
-        if (username == null || password == null) {
-          LOGGER.log(
-              Level.WARNING,
-              () -> "Server id=" + id + " in " + settings + " has no usable credentials");
-          return null;
-        }
-        return "Basic " + encodeCredentials(username, password);
+      final var servers =
+          (NodeList) xPath.evaluate("//server[id='" + id + "']", doc, XPathConstants.NODESET);
+
+      if (servers.getLength() == 0) {
+        LOGGER.log(Level.WARNING, () -> "No server found with id=" + id + " in " + settings);
+        return null;
       }
 
-      LOGGER.log(Level.WARNING, () -> "No server found with id=" + id + " in " + settings);
-      return null;
+      final var server = servers.item(0);
+      final var username = unwrap(xPath.evaluate("username", server), properties);
+      final var password = unwrap(xPath.evaluate("password", server), properties);
+
+      return "Basic " + encodeCredentials(username, password);
     } catch (IllegalStateException e) {
-      // An unexpandable ${env.NAME}: a misconfiguration worth failing on, see unwrap(...).
       throw e;
     } catch (Exception e) {
-      LOGGER.log(Level.WARNING, "Failed to parse " + settings, e);
-      return null;
+      throw new RuntimeException("Failed to parse " + settings, e);
     }
   }
 
   /**
-   * Expands a {@code ${env.NAME}} placeholder from the supplied properties.
-   *
-   * <p>An unexpandable placeholder is a misconfiguration, not an absent credential: the caller went
-   * to the trouble of declaring the server, so failing here - naming the variable - beats sending
-   * {@code ${env.GITHUB_TOKEN}} as a literal password and reporting whatever the registry says
-   * about it. Contrast with a missing {@code settings.xml} or a missing {@code <server>}, which
-   * simply mean "no credentials configured"; see {@link #repoAuthorization}.
+   * Expands a {@code ${env.NAME}} placeholder from the given properties. Fails when the variable is
+   * not set, because sending the literal {@code ${env.NAME}} as a password would only produce a
+   * confusing 401.
    */
   static String unwrap(String value, Properties properties) {
     if (value != null && value.startsWith("${env.") && value.endsWith("}")) {
@@ -247,50 +230,4 @@ public record Repository(
     return value;
   }
 
-  private static List<Element> children(Element parent, String name) {
-    final var result = new ArrayList<Element>();
-    if (parent == null) {
-      return result;
-    }
-    final var nodes = parent.getChildNodes();
-    for (int i = 0; i < nodes.getLength(); i++) {
-      if (nodes.item(i) instanceof Element element && name.equals(localName(element))) {
-        result.add(element);
-      }
-    }
-    return result;
-  }
-
-  private static Element child(Element parent, String name) {
-    final var children = children(parent, name);
-    return children.isEmpty() ? null : children.get(0);
-  }
-
-  private static String text(Element parent, String name) {
-    final var child = child(parent, name);
-    if (child == null) {
-      return null;
-    }
-    final var text = child.getTextContent();
-    return text == null || text.isBlank() ? null : text.trim();
-  }
-
-  private static String localName(Element element) {
-    final var tagName = element.getTagName();
-    final var colon = tagName.indexOf(':');
-    return colon < 0 ? tagName : tagName.substring(colon + 1);
-  }
-
-  /** {@code settings.xml} comes from outside the JVM, so resolve nothing external. */
-  private static DocumentBuilder documentBuilder() throws ParserConfigurationException {
-    final var factory = DocumentBuilderFactory.newInstance();
-    factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-    factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-    factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-    factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-    factory.setExpandEntityReferences(false);
-    factory.setNamespaceAware(false);
-    factory.setValidating(false);
-    return factory.newDocumentBuilder();
-  }
 }

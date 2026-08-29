@@ -210,6 +210,24 @@ class JarResolverTest {
     assertArrayEquals(newContent, Files.readAllBytes(finalJar));
   }
 
+  @Test
+  void shouldServeCachedJarWithoutDownloadWhenChecksumMatches() throws Exception {
+    byte[] cached = "already-here".getBytes();
+    Path dir = m2Repo.resolve("com/foo/bar/1.0");
+    Files.createDirectories(dir);
+    Files.write(dir.resolve("bar-1.0.jar"), cached);
+    Files.writeString(dir.resolve("bar-1.0.jar.sha1"), computeSha1(cached));
+
+    // No remote context registered: any download attempt would fail the request.
+    Path result =
+        jarResolver
+            .resolveJar(repository, newMetadata("com.foo", "bar", "1.0", "20231010120000"))
+            .join();
+
+    assertEquals(dir.resolve("bar-1.0.jar"), result);
+    assertArrayEquals(cached, Files.readAllBytes(result));
+  }
+
   private void mockRemoteJar(String path, byte[] content) {
     // Mock the JAR
     server.createContext(

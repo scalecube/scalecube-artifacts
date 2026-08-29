@@ -3,6 +3,7 @@ package io.scalecube.artifacts.maven;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -215,5 +216,41 @@ class FetcherTest {
     } catch (IOException e) {
       fail(e);
     }
+  }
+
+  @Test
+  void shouldNotSendAuthorizationHeaderWhenAuthzIsNull() throws Exception {
+    final var seen = new java.util.concurrent.atomic.AtomicReference<String>("unset");
+    byte[] content = "fake-jar-data".getBytes();
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          seen.set(ex.getRequestHeaders().getFirst("Authorization"));
+          ex.sendResponseHeaders(200, content.length);
+          ex.getResponseBody().write(content);
+          ex.close();
+        });
+
+    fetcher.get(serverUri, null, tempDir).join();
+
+    assertNull(seen.get(), "Authorization header");
+  }
+
+  @Test
+  void shouldSendAuthorizationHeaderWhenAuthzIsGiven() throws Exception {
+    final var seen = new java.util.concurrent.atomic.AtomicReference<String>();
+    byte[] content = "fake-jar-data".getBytes();
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          seen.set(ex.getRequestHeaders().getFirst("Authorization"));
+          ex.sendResponseHeaders(200, content.length);
+          ex.getResponseBody().write(content);
+          ex.close();
+        });
+
+    fetcher.get(serverUri, "Basic dTpw", tempDir).join();
+
+    assertEquals("Basic dTpw", seen.get(), "Authorization header");
   }
 }

@@ -14,7 +14,6 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -27,16 +26,9 @@ import java.util.concurrent.TimeUnit;
 public class Fetcher {
 
   private static final HttpClient HTTP_CLIENT =
-      HttpClient.newBuilder()
-          .version(Version.HTTP_2)
-          .followRedirects(Redirect.NORMAL)
-          .connectTimeout(Duration.ofSeconds(30))
-          .build();
+      HttpClient.newBuilder().version(Version.HTTP_2).followRedirects(Redirect.NORMAL).build();
 
   private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
-
-  /** A stalled transfer must not hang the caller forever; artifacts can be tens of megabytes. */
-  private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(10);
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final long DEFAULT_INITIAL_DELAY_MS = 3000L;
@@ -88,7 +80,7 @@ public class Fetcher {
       return CompletableFuture.failedFuture(e);
     }
 
-    final var request = HttpRequest.newBuilder(uri).GET().timeout(REQUEST_TIMEOUT);
+    final var request = HttpRequest.newBuilder(uri).GET();
     if (authz != null && !authz.isEmpty()) {
       request.header("Authorization", authz);
     }

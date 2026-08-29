@@ -16,7 +16,7 @@ SHA-1 checksum validation, and configurable update policies.
 - Async HTTP/2 downloads via Java 11 `HttpClient`
 - SHA-1 validation after every download, and again before serving a cached file
 - Concurrency-safe: every published file is a single atomic rename, so parallel resolutions of the
-  same coordinate cannot observe a partial file
+  same coordinate never see a partial file
 - Local cache awareness with configurable update policy (`REMOTE` vs `LOCAL`)
 - Automatic retry with exponential back-off, covering both metadata and jar
 - Credentials from inline properties or `~/.m2/settings.xml` (with `${env.VAR}` interpolation)
@@ -87,22 +87,18 @@ returned path is that timestamped file:
 Path jar = resolver.resolve("com.example:bar:1.0-SNAPSHOT").join();
 ```
 
-Nothing here ever writes the base-named `bar-1.0-SNAPSHOT.jar`. That name is Maven's slot for a
-build produced by `mvn install`, and writing it would both destroy a developer's local build and
-make two concurrent resolutions of the same coordinate race on one path.
+The base-named `bar-1.0-SNAPSHOT.jar` is never written. That name belongs to `mvn install`, and
+writing it overwrote locally built jars and made two concurrent resolutions of the same coordinate
+race on one path.
 
-That also gives you the behaviour you want when both exist. If `mvn install` has put
-`bar-1.0-SNAPSHOT.jar` in the local repository - marked `<localCopy>true</localCopy>` in
-`maven-metadata-local.xml` - resolution returns *that* file and never touches the network, which is
-Maven's own precedence rule:
+If `mvn install` has put `bar-1.0-SNAPSHOT.jar` in the local repository, marked
+`<localCopy>true</localCopy>` in `maven-metadata-local.xml`, resolution returns that file and does
+not use the network. This is Maven's own precedence rule:
 
 ```java
 // -> ~/.m2/repository/com/example/bar/1.0-SNAPSHOT/bar-1.0-SNAPSHOT.jar, no HTTP request
 Path jar = resolver.resolve("com.example:bar:1.0-SNAPSHOT").join();
 ```
-
-Releases skip metadata entirely: a Maven repository publishes no version-level `maven-metadata.xml`
-for a release, and the file name follows from the coordinate.
 
 ## Configuration
 
