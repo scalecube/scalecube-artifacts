@@ -11,8 +11,14 @@ on:
 
 jobs:
   build:
-    name: Branch CI
-    runs-on: ubuntu-latest
+    # TEMPORARY: the os matrix is here only to find out whether the atomic-move based file
+    # publishing works on Windows and macOS. Revert this commit once the answer is recorded.
+    name: Branch CI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v3
