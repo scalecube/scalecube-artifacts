@@ -112,7 +112,7 @@ class FetcherTest {
     server.stop(0);
 
     // Use 1 attempt to avoid retry delays (connection refused is a retryable network error)
-    Fetcher noRetryFetcher = new Fetcher(HttpClient.newHttpClient(), 1, 0L);
+    Fetcher noRetryFetcher = new Fetcher(HttpClient.newHttpClient(), 1, 0L, 60_000L);
     CompletableFuture<Path> future = noRetryFetcher.get(serverUri, "", tempDir);
 
     assertThrows(CompletionException.class, future::join);
@@ -143,7 +143,7 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
     Path result = retryFetcher.get(serverUri, "", tempDir).join();
 
     assertTrue(Files.exists(result));
@@ -163,7 +163,7 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
     CompletionException ex =
         assertThrows(
             CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
@@ -180,6 +180,29 @@ class FetcherTest {
   }
 
   @Test
+  void maxDelayCapsTheBackoff() {
+    AtomicInteger callCount = new AtomicInteger(0);
+
+    server.createContext(
+        "/test.jar",
+        ex -> {
+          callCount.incrementAndGet();
+          ex.sendResponseHeaders(503, -1);
+          ex.close();
+        });
+
+    // an initial delay of 30s would make 3 attempts take over a minute, the 5ms ceiling caps it
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 30_000L, 5L);
+
+    final var startedAt = System.nanoTime();
+    assertThrows(CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
+    final var elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+
+    assertEquals(3, callCount.get(), "Should have exhausted all 3 attempts");
+    assertTrue(elapsedMs < 10_000, "Backoff was not capped, took " + elapsedMs + "ms");
+  }
+
+  @Test
   void noRetryOnNonRetryableStatus() {
     AtomicInteger callCount = new AtomicInteger(0);
 
@@ -191,7 +214,7 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L);
+    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
     assertThrows(CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
 
     assertEquals(1, callCount.get(), "Non-retryable status should not trigger any retries");

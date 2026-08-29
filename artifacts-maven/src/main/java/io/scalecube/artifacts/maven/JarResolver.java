@@ -171,7 +171,15 @@ public class JarResolver {
     }
   }
 
-  /** The newest already-downloaded build of a snapshot, by timestamped file name. */
+  /**
+   * Returns the newest build of a snapshot that is already in the local repository. Builds are
+   * ordered by their timestamped file name, so the last one is the newest. Returns null when
+   * nothing was downloaded yet.
+   *
+   * @param repository artifact repository
+   * @param coordinates artifact coordinates
+   * @return newest cached jar, or null if there is none
+   */
   private static Path newestCachedBuild(Repository repository, Coordinates coordinates) {
     final var directory = Repository.localDir(repository, coordinates.spec());
     if (!Files.isDirectory(directory)) {

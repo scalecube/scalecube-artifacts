@@ -8,6 +8,6 @@ public class MavenResolverProvider implements ArtifactResolverProvider {
 
   @Override
   public ArtifactResolver create(Properties properties) {
-    return new MavenResolver(Repository.newInstance(properties));
+    return new MavenResolver(new Repository(properties).conclude());
   }
 }

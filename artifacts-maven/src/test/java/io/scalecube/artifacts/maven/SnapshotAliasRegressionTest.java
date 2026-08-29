@@ -66,12 +66,12 @@ class SnapshotAliasRegressionTest {
     server.start();
 
     repository =
-        new Repository(
-            "central",
-            "http://localhost:" + server.getAddress().getPort(),
-            null,
-            m2Repo.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:" + server.getAddress().getPort())
+            .authz(null)
+            .repoDir(m2Repo.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
   }
 
   @AfterEach

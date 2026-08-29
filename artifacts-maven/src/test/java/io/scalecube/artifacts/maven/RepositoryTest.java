@@ -1,10 +1,16 @@
 package io.scalecube.artifacts.maven;
 
+import static io.scalecube.artifacts.maven.Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS;
+import static io.scalecube.artifacts.maven.Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS;
+import static io.scalecube.artifacts.maven.Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS;
+import static io.scalecube.artifacts.maven.Repository.DEFAULT_REPO_UPDATE_POLICY;
+import static io.scalecube.artifacts.maven.Repository.DEFAULT_REPO_VERIFY_CACHED_CHECKSUM;
 import static io.scalecube.artifacts.maven.Repository.REPO_DIR_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_ID_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_PASSWORD_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_RETRY_MAX_ATTEMPTS_PROP_NAME;
+import static io.scalecube.artifacts.maven.Repository.REPO_RETRY_MAX_DELAY_MS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_SETTINGS_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_UPDATE_POLICY_PROP_NAME;
 import static io.scalecube.artifacts.maven.Repository.REPO_URL_PROP_NAME;
@@ -36,7 +42,7 @@ class RepositoryTest {
     properties.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, NULL_VALUE);
     properties.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, NULL_VALUE);
 
-    final var repository = Repository.newInstance(properties);
+    final var repository = concluded(properties);
 
     assertEquals(
         Path.of(System.getProperty("user.home"), ".m2", "repository").toFile(),
@@ -55,7 +61,18 @@ class RepositoryTest {
     withMarker.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, NULL_VALUE);
     withMarker.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, NULL_VALUE);
 
-    assertEquals(Repository.newInstance(credentialedProps()), Repository.newInstance(withMarker));
+    final var absent = concluded(credentialedProps());
+    final var marked = concluded(withMarker);
+
+    assertEquals(absent.id(), marked.id(), "id");
+    assertEquals(absent.url(), marked.url(), "url");
+    assertEquals(absent.authz(), marked.authz(), "authz");
+    assertEquals(absent.repoDir(), marked.repoDir(), "repoDir");
+    assertEquals(absent.repoUpdatePolicy(), marked.repoUpdatePolicy(), "repoUpdatePolicy");
+    assertEquals(absent.retryMaxAttempts(), marked.retryMaxAttempts(), "retryMaxAttempts");
+    assertEquals(absent.retryInitialDelayMs(), marked.retryInitialDelayMs(), "retryInitialDelayMs");
+    assertEquals(
+        absent.verifyCachedChecksum(), marked.verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   @Test
@@ -65,7 +82,7 @@ class RepositoryTest {
     properties.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, "3");
     properties.setProperty(REPO_RETRY_INITIAL_DELAY_MS_PROP_NAME, "100");
 
-    final var repository = Repository.newInstance(properties);
+    final var repository = concluded(properties);
 
     assertEquals(UpdatePolicy.LOCAL, repository.repoUpdatePolicy(), "repoUpdatePolicy");
     assertEquals(3, repository.retryMaxAttempts(), "retryMaxAttempts");
@@ -77,7 +94,7 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_ID_PROP_NAME, NULL_VALUE);
 
-    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(properties));
+    assertThrows(IllegalArgumentException.class, () -> concluded(properties));
   }
 
   @Test
@@ -85,7 +102,7 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_URL_PROP_NAME, NULL_VALUE);
 
-    assertThrows(IllegalArgumentException.class, () -> Repository.newInstance(properties));
+    assertThrows(IllegalArgumentException.class, () -> concluded(properties));
   }
 
   @Test
@@ -104,7 +121,7 @@ class RepositoryTest {
     properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
     properties.setProperty(REPO_SETTINGS_PROP_NAME, dir.resolve("nope.xml").toString());
 
-    assertNull(Repository.newInstance(properties).authz(), "authz");
+    assertNull(concluded(properties).authz(), "authz");
   }
 
   @Test
@@ -120,7 +137,7 @@ class RepositoryTest {
     properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
     properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
 
-    assertNull(Repository.newInstance(properties).authz(), "authz");
+    assertNull(concluded(properties).authz(), "authz");
   }
 
   @Test
@@ -136,7 +153,7 @@ class RepositoryTest {
     properties.setProperty(REPO_URL_PROP_NAME, "https://example.com/repo");
     properties.setProperty(REPO_SETTINGS_PROP_NAME, settings.toString());
 
-    final var authz = Repository.newInstance(properties).authz();
+    final var authz = concluded(properties).authz();
 
     assertNotNull(authz, "authz");
     assertEquals("Basic dTpw", authz, "authz");
@@ -144,8 +161,7 @@ class RepositoryTest {
 
   @Test
   void testVerifyCachedChecksumDefaultsToTrue() {
-    assertTrue(
-        Repository.newInstance(credentialedProps()).verifyCachedChecksum(), "verifyCachedChecksum");
+    assertTrue(concluded(credentialedProps()).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   @Test
@@ -153,7 +169,7 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, "false");
 
-    assertFalse(Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+    assertFalse(concluded(properties).verifyCachedChecksum(), "verifyCachedChecksum");
   }
 
   @Test
@@ -161,7 +177,64 @@ class RepositoryTest {
     final var properties = credentialedProps();
     properties.setProperty(REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME, NULL_VALUE);
 
-    assertTrue(Repository.newInstance(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+    assertTrue(concluded(properties).verifyCachedChecksum(), "verifyCachedChecksum");
+  }
+
+  @Test
+  void testAbsentPropertyAppliesDefault() {
+    final var repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost")
+            .repoUpdatePolicy(UpdatePolicy.LOCAL)
+            .retryMaxAttempts(2)
+            .retryInitialDelayMs(50)
+            .verifyCachedChecksum(false);
+
+    // the default lives in the Properties setter, so an absent property applies it
+    final var properties = new Properties();
+    repository
+        .repoUpdatePolicy(properties)
+        .retryMaxAttempts(properties)
+        .retryInitialDelayMs(properties)
+        .retryMaxDelayMs(properties)
+        .verifyCachedChecksum(properties);
+
+    assertEquals(DEFAULT_REPO_UPDATE_POLICY, repository.repoUpdatePolicy(), "repoUpdatePolicy");
+    assertEquals(
+        DEFAULT_REPO_RETRY_MAX_ATTEMPTS, repository.retryMaxAttempts(), "retryMaxAttempts");
+    assertEquals(
+        DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
+        repository.retryInitialDelayMs(),
+        "retryInitialDelayMs");
+    assertEquals(DEFAULT_REPO_RETRY_MAX_DELAY_MS, repository.retryMaxDelayMs(), "retryMaxDelayMs");
+    assertEquals(
+        DEFAULT_REPO_VERIFY_CACHED_CHECKSUM,
+        repository.verifyCachedChecksum(),
+        "verifyCachedChecksum");
+  }
+
+  @Test
+  void testPropertyOverridesValueSetFromCode() {
+    final var repository =
+        new Repository().id("central").url("http://localhost").retryMaxAttempts(2);
+
+    final var properties = new Properties();
+    properties.setProperty(REPO_RETRY_MAX_ATTEMPTS_PROP_NAME, "7");
+
+    assertEquals(7, repository.retryMaxAttempts(properties).retryMaxAttempts(), "retryMaxAttempts");
+  }
+
+  @Test
+  void testRetryMaxDelayMsReadFromProperty() {
+    final var properties = credentialedProps();
+    properties.setProperty(REPO_RETRY_MAX_DELAY_MS_PROP_NAME, "1234");
+
+    assertEquals(1234L, concluded(properties).retryMaxDelayMs(), "retryMaxDelayMs");
+  }
+
+  private static Repository concluded(Properties properties) {
+    return new Repository(properties).conclude();
   }
 
   private static Properties credentialedProps() {

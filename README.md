@@ -141,6 +141,10 @@ can unset an inherited value.
   in milliseconds before the first retry. Each subsequent attempt doubles the delay
   (exponential back-off).
 
+- `scalecube.artifacts.maven.repo.retryMaxDelayMs` `(integer: 60000)` – Ceiling for the
+  doubling delay, in milliseconds. Without it a long retry run would keep doubling until
+  it slept for hours.
+
 ### Authentication
 
 - `scalecube.artifacts.maven.repo.username` `(string: "")` – Username for HTTP Basic auth.

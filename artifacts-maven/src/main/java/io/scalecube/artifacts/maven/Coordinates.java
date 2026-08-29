@@ -50,7 +50,12 @@ public record Coordinates(String groupId, String artifactId, String version) {
     return snapshot() ? version.substring(0, version.length() - SNAPSHOT.length()) : version;
   }
 
-  /** Returns the repository-relative directory holding every file of this version. */
+  /**
+   * Returns the repository-relative directory that holds every file of this version, for example
+   * {@code com/foo/bar/1.0-SNAPSHOT}.
+   *
+   * @return directory path relative to the repository root
+   */
   public String directory() {
     return groupId.replace('.', '/') + "/" + artifactId + "/" + version;
   }

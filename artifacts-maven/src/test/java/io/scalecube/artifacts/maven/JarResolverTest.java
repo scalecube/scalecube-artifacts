@@ -32,12 +32,12 @@ class JarResolverTest {
     server.start();
 
     repository =
-        new Repository(
-            "central",
-            "http://localhost:" + server.getAddress().getPort(),
-            "Bearer cool-token",
-            m2Repo.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:" + server.getAddress().getPort())
+            .authz("Bearer cool-token")
+            .repoDir(m2Repo.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     jarResolver = new JarResolver(new Fetcher(HttpClient.newHttpClient()));
   }
@@ -231,15 +231,15 @@ class JarResolverTest {
   @Test
   void shouldServeCachedJarWithoutChecksumWhenVerificationIsOff() throws Exception {
     Repository noVerify =
-        new Repository(
-            "central",
-            repository.url(),
-            repository.authz(),
-            m2Repo.toFile(),
-            UpdatePolicy.REMOTE,
-            Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
-            Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
-            false);
+        new Repository()
+            .id("central")
+            .url(repository.url())
+            .authz(repository.authz())
+            .repoDir(m2Repo.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS)
+            .retryInitialDelayMs(Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS)
+            .verifyCachedChecksum(false);
 
     byte[] cached = "already-here".getBytes();
     Path dir = m2Repo.resolve("com/foo/bar/1.0");

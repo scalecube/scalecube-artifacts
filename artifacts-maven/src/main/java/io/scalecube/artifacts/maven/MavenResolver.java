@@ -19,8 +19,6 @@ public class MavenResolver implements ArtifactResolver {
 
   private static final System.Logger LOGGER = System.getLogger(MavenResolver.class.getName());
 
-  private static final long MAX_DELAY_MS = 60_000L;
-
   private final Repository repository;
   private final MetadataResolver metadataResolver;
   private final JarResolver jarResolver;
@@ -28,10 +26,15 @@ public class MavenResolver implements ArtifactResolver {
   public MavenResolver(Repository repository) {
     this(
         repository,
-        new MetadataResolver(
-            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())),
-        new JarResolver(
-            new Fetcher(repository.retryMaxAttempts(), repository.retryInitialDelayMs())));
+        new MetadataResolver(newFetcher(repository)),
+        new JarResolver(newFetcher(repository)));
+  }
+
+  private static Fetcher newFetcher(Repository repository) {
+    return new Fetcher(
+        repository.retryMaxAttempts(),
+        repository.retryInitialDelayMs(),
+        repository.retryMaxDelayMs());
   }
 
   public MavenResolver(
@@ -94,7 +97,7 @@ public class MavenResolver implements ArtifactResolver {
         && fe.statusCode() == 404
         && attempt < repository.retryMaxAttempts()) {
       final long delayMs =
-          Math.min(repository.retryInitialDelayMs() << (attempt - 1), MAX_DELAY_MS);
+          Math.min(repository.retryInitialDelayMs() << (attempt - 1), repository.retryMaxDelayMs());
       LOGGER.log(
           Level.INFO,
           () ->

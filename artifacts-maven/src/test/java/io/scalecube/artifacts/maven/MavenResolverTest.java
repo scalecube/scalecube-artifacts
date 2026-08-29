@@ -35,12 +35,12 @@ class MavenResolverTest {
   @Test
   void resolve_release_remotePolicy_downloadsWhenNoLocal() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -64,12 +64,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_downloadsWhenMetadataChanged() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -105,12 +105,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_locallyInstalledBuildWinsOverRemote() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -136,12 +136,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_downloadsWhenLocalJarMissingEvenIfMetadataUnchanged() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -174,12 +174,12 @@ class MavenResolverTest {
   @Test
   void resolve_localPolicy_returnsLocalJarForRelease() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.LOCAL);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.LOCAL);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -197,12 +197,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_metadataChanged_lastUpdatedNewer_downloadsNewJar() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -231,12 +231,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_localMetadataMissing_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -263,12 +263,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_remoteMissingSnapshot_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -298,12 +298,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_localMissingLastUpdated_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -334,12 +334,12 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_localAndRemoteMissingLastUpdated_assumesChanged_downloads() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -368,14 +368,14 @@ class MavenResolverTest {
   @Test
   void resolve_release_remotePolicy_retriesOn404ThenSucceeds() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -401,14 +401,14 @@ class MavenResolverTest {
   @Test
   void resolve_release_remotePolicy_exhaustsRetriesOn404() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -430,14 +430,14 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_retriesOn404ThenSucceeds() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Bearer cool-token",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -474,14 +474,14 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_retriesWhenMetadataItselfIs404() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Basic dTpw",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Basic dTpw")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
@@ -508,14 +508,14 @@ class MavenResolverTest {
   @Test
   void resolve_snapshot_remotePolicy_exhaustsRetriesWhenMetadataStays404() {
     Repository repository =
-        new Repository(
-            "central",
-            "http://localhost:0",
-            "Basic dTpw",
-            tempCacheDir.toFile(),
-            UpdatePolicy.REMOTE,
-            3,
-            0L);
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Basic dTpw")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
 
     MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
 
