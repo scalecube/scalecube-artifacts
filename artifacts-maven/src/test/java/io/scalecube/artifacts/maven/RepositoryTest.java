@@ -293,6 +293,22 @@ class RepositoryTest {
     assertEquals(1234L, concluded(properties).retryMaxDelayMs(), "retryMaxDelayMs");
   }
 
+  @Test
+  void testTimeoutsReadFromPropertiesOrDefault() {
+    final var defaults = concluded(credentialedProps());
+    assertEquals(
+        Repository.DEFAULT_REPO_CONNECT_TIMEOUT_MS, defaults.connectTimeoutMs(), "connectTimeoutMs");
+    assertEquals(
+        Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS, defaults.requestTimeoutMs(), "requestTimeoutMs");
+
+    final var properties = credentialedProps();
+    properties.setProperty(Repository.REPO_CONNECT_TIMEOUT_MS_PROP_NAME, "1500");
+    properties.setProperty(Repository.REPO_REQUEST_TIMEOUT_MS_PROP_NAME, "2500");
+    final var repository = concluded(properties);
+    assertEquals(1500L, repository.connectTimeoutMs(), "connectTimeoutMs");
+    assertEquals(2500L, repository.requestTimeoutMs(), "requestTimeoutMs");
+  }
+
   private static Repository concluded(Properties properties) {
     return new Repository(properties).conclude();
   }

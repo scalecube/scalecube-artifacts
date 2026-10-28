@@ -2,6 +2,7 @@ package io.scalecube.artifacts.maven;
 
 import io.scalecube.artifacts.api.ArtifactResolver;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -34,9 +35,11 @@ public class MavenResolver implements ArtifactResolver {
 
   private static Fetcher newFetcher(Repository repository) {
     return new Fetcher(
+        Fetcher.newHttpClient(Duration.ofMillis(repository.connectTimeoutMs())),
         repository.retryMaxAttempts(),
         repository.retryInitialDelayMs(),
-        repository.retryMaxDelayMs());
+        repository.retryMaxDelayMs(),
+        Duration.ofMillis(repository.requestTimeoutMs()));
   }
 
   public MavenResolver(

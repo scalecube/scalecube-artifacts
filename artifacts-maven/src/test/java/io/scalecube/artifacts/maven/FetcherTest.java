@@ -12,10 +12,16 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -124,6 +130,79 @@ class FetcherTest {
     } catch (IOException e) {
       fail(e);
     }
+  }
+
+  @Test
+  void retriesWhenTheResponseDoesNotBeginInTime() throws Exception {
+    byte[] content = "after-a-stall".getBytes();
+    AtomicInteger callCount = new AtomicInteger(0);
+    CountDownLatch release = new CountDownLatch(1);
+    HttpServer stallingServer = stallingServer(callCount, release, content);
+    try {
+      Fetcher fetcher =
+          new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L, Duration.ofMillis(200));
+
+      Path result = fetcher.get(uriOf(stallingServer), "", tempDir).get(10, TimeUnit.SECONDS);
+
+      assertArrayEquals(content, Files.readAllBytes(result));
+      assertEquals(2, callCount.get(), "the stalled request was not retried");
+    } finally {
+      release.countDown();
+      stallingServer.stop(0);
+    }
+  }
+
+  @Test
+  void failsWhenTheResponseDoesNotBeginInTime() throws Exception {
+    AtomicInteger callCount = new AtomicInteger(0);
+    CountDownLatch release = new CountDownLatch(1);
+    HttpServer stallingServer = stallingServer(callCount, release, new byte[0]);
+    try {
+      Fetcher noRetryFetcher =
+          new Fetcher(HttpClient.newHttpClient(), 1, 0L, 60_000L, Duration.ofMillis(200));
+      CompletableFuture<Path> future = noRetryFetcher.get(uriOf(stallingServer), "", tempDir);
+
+      ExecutionException ex =
+          assertThrows(ExecutionException.class, () -> future.get(10, TimeUnit.SECONDS));
+      assertTrue(
+          ex.getCause() instanceof HttpTimeoutException
+              || ex.getCause().getCause() instanceof HttpTimeoutException,
+          () -> "not a timeout: " + ex.getCause());
+    } finally {
+      release.countDown();
+      stallingServer.stop(0);
+    }
+  }
+
+  // A server whose first request is accepted and never answered until released; later requests
+  // get the content
+  private static HttpServer stallingServer(
+      AtomicInteger callCount, CountDownLatch release, byte[] content) throws IOException {
+    HttpServer stallingServer = HttpServer.create(new InetSocketAddress(0), 0);
+    stallingServer.setExecutor(Executors.newCachedThreadPool());
+    stallingServer.createContext(
+        "/test.jar",
+        call -> {
+          if (callCount.incrementAndGet() == 1) {
+            try {
+              release.await();
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+            call.close();
+            return;
+          }
+          call.sendResponseHeaders(200, content.length);
+          try (var os = call.getResponseBody()) {
+            os.write(content);
+          }
+        });
+    stallingServer.start();
+    return stallingServer;
+  }
+
+  private static URI uriOf(HttpServer httpServer) {
+    return URI.create("http://localhost:" + httpServer.getAddress().getPort() + "/test.jar");
   }
 
   @Test
