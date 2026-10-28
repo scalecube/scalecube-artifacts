@@ -45,7 +45,7 @@ public class Repository {
   public static final long DEFAULT_REPO_RETRY_INITIAL_DELAY_MS = 3000L;
   public static final long DEFAULT_REPO_RETRY_MAX_DELAY_MS = 60_000L;
   public static final long DEFAULT_REPO_CONNECT_TIMEOUT_MS = 10_000L;
-  public static final long DEFAULT_REPO_REQUEST_TIMEOUT_MS = 30_000L;
+  public static final long DEFAULT_REPO_REQUEST_TIMEOUT_MS = 60_000L;
   public static final boolean DEFAULT_REPO_VERIFY_CACHED_CHECKSUM = true;
 
   private String id;
@@ -329,8 +329,8 @@ public class Repository {
 
   /**
    * Returns how long a request may wait for the response to begin. A request whose response does
-   * not begin in time fails the attempt, which is then retried like any network error; without it
-   * a stalled request would wait forever and never be retried.
+   * not begin in time fails the attempt, which is then retried like any network error; without it a
+   * stalled request would wait forever and never be retried.
    *
    * @return request timeout, in milliseconds
    */

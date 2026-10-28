@@ -118,7 +118,8 @@ class FetcherTest {
     server.stop(0);
 
     // Use 1 attempt to avoid retry delays (connection refused is a retryable network error)
-    Fetcher noRetryFetcher = new Fetcher(HttpClient.newHttpClient(), 1, 0L, 60_000L);
+    Fetcher noRetryFetcher =
+        new Fetcher(HttpClient.newHttpClient(), 1, 0L, 60_000L, Duration.ofSeconds(30));
     CompletableFuture<Path> future = noRetryFetcher.get(serverUri, "", tempDir);
 
     assertThrows(CompletionException.class, future::join);
@@ -222,7 +223,8 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
+    Fetcher retryFetcher =
+        new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L, Duration.ofSeconds(30));
     Path result = retryFetcher.get(serverUri, "", tempDir).join();
 
     assertTrue(Files.exists(result));
@@ -242,7 +244,8 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
+    Fetcher retryFetcher =
+        new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L, Duration.ofSeconds(30));
     CompletionException ex =
         assertThrows(
             CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
@@ -271,7 +274,8 @@ class FetcherTest {
         });
 
     // an initial delay of 30s would make 3 attempts take over a minute, the 5ms ceiling caps it
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 30_000L, 5L);
+    Fetcher retryFetcher =
+        new Fetcher(HttpClient.newHttpClient(), 3, 30_000L, 5L, Duration.ofSeconds(30));
 
     final var startedAt = System.nanoTime();
     assertThrows(CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
@@ -293,7 +297,8 @@ class FetcherTest {
           ex.close();
         });
 
-    Fetcher retryFetcher = new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L);
+    Fetcher retryFetcher =
+        new Fetcher(HttpClient.newHttpClient(), 3, 10L, 60_000L, Duration.ofSeconds(30));
     assertThrows(CompletionException.class, () -> retryFetcher.get(serverUri, "", tempDir).join());
 
     assertEquals(1, callCount.get(), "Non-retryable status should not trigger any retries");

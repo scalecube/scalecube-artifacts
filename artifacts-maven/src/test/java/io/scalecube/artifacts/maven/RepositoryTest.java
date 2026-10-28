@@ -297,9 +297,13 @@ class RepositoryTest {
   void testTimeoutsReadFromPropertiesOrDefault() {
     final var defaults = concluded(credentialedProps());
     assertEquals(
-        Repository.DEFAULT_REPO_CONNECT_TIMEOUT_MS, defaults.connectTimeoutMs(), "connectTimeoutMs");
+        Repository.DEFAULT_REPO_CONNECT_TIMEOUT_MS,
+        defaults.connectTimeoutMs(),
+        "connectTimeoutMs");
     assertEquals(
-        Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS, defaults.requestTimeoutMs(), "requestTimeoutMs");
+        Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS,
+        defaults.requestTimeoutMs(),
+        "requestTimeoutMs");
 
     final var properties = credentialedProps();
     properties.setProperty(Repository.REPO_CONNECT_TIMEOUT_MS_PROP_NAME, "1500");

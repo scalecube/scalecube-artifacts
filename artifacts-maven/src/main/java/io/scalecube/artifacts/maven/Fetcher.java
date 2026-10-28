@@ -29,6 +29,9 @@ public class Fetcher {
   private static final HttpClient HTTP_CLIENT =
       newHttpClient(Duration.ofMillis(Repository.DEFAULT_REPO_CONNECT_TIMEOUT_MS));
 
+  private static final Duration DEFAULT_REQUEST_TIMEOUT =
+      Duration.ofMillis(Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS);
+
   private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
 
   private final HttpClient client;
@@ -46,34 +49,18 @@ public class Fetcher {
         client,
         Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
         Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
-        Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS);
+        Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS,
+        DEFAULT_REQUEST_TIMEOUT);
   }
 
   public Fetcher(int maxAttempts, long initialDelayMs, long maxDelayMs) {
-    this(HTTP_CLIENT, maxAttempts, initialDelayMs, maxDelayMs);
+    this(HTTP_CLIENT, maxAttempts, initialDelayMs, maxDelayMs, DEFAULT_REQUEST_TIMEOUT);
   }
 
   /**
-   * Creates a fetcher with explicit retry settings and the default request timeout. The defaults
-   * for these come from {@link Repository}, which is where they are configured from properties.
-   *
-   * @param client http client
-   * @param maxAttempts total attempts, including the first one
-   * @param initialDelayMs delay before the first retry, doubled on each further attempt
-   * @param maxDelayMs ceiling for the doubling delay
-   */
-  public Fetcher(HttpClient client, int maxAttempts, long initialDelayMs, long maxDelayMs) {
-    this(
-        client,
-        maxAttempts,
-        initialDelayMs,
-        maxDelayMs,
-        Duration.ofMillis(Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS));
-  }
-
-  /**
-   * Creates a fetcher with explicit retry settings and request timeout. A request whose response
-   * does not begin within the timeout fails, and is retried like any network error.
+   * Creates a fetcher with explicit retry settings and request timeout. The defaults for these come
+   * from {@link Repository}, which is where they are configured from properties. A request whose
+   * response does not begin within the timeout fails, and is retried like any network error.
    *
    * @param client http client
    * @param maxAttempts total attempts, including the first one
