@@ -14,6 +14,7 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -26,7 +27,10 @@ import java.util.concurrent.TimeUnit;
 public class Fetcher {
 
   private static final HttpClient HTTP_CLIENT =
-      HttpClient.newBuilder().version(Version.HTTP_2).followRedirects(Redirect.NORMAL).build();
+      newHttpClient(Duration.ofMillis(Repository.DEFAULT_REPO_CONNECT_TIMEOUT_MS));
+
+  private static final Duration DEFAULT_REQUEST_TIMEOUT =
+      Duration.ofMillis(Repository.DEFAULT_REPO_REQUEST_TIMEOUT_MS);
 
   private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
 
@@ -34,6 +38,7 @@ public class Fetcher {
   private final int maxAttempts;
   private final long initialDelayMs;
   private final long maxDelayMs;
+  private final Duration requestTimeout;
 
   public Fetcher() {
     this(HTTP_CLIENT);
@@ -44,33 +49,58 @@ public class Fetcher {
         client,
         Repository.DEFAULT_REPO_RETRY_MAX_ATTEMPTS,
         Repository.DEFAULT_REPO_RETRY_INITIAL_DELAY_MS,
-        Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS);
+        Repository.DEFAULT_REPO_RETRY_MAX_DELAY_MS,
+        DEFAULT_REQUEST_TIMEOUT);
   }
 
   public Fetcher(int maxAttempts, long initialDelayMs, long maxDelayMs) {
-    this(HTTP_CLIENT, maxAttempts, initialDelayMs, maxDelayMs);
+    this(HTTP_CLIENT, maxAttempts, initialDelayMs, maxDelayMs, DEFAULT_REQUEST_TIMEOUT);
   }
 
   /**
-   * Creates a fetcher with explicit retry settings. The defaults for these come from {@link
-   * Repository}, which is where they are configured from properties.
+   * Creates a fetcher with explicit retry settings and request timeout. The defaults for these come
+   * from {@link Repository}, which is where they are configured from properties. A request whose
+   * response does not begin within the timeout fails, and is retried like any network error.
    *
    * @param client http client
    * @param maxAttempts total attempts, including the first one
    * @param initialDelayMs delay before the first retry, doubled on each further attempt
    * @param maxDelayMs ceiling for the doubling delay
+   * @param requestTimeout how long a request may wait for its response to begin
    */
-  public Fetcher(HttpClient client, int maxAttempts, long initialDelayMs, long maxDelayMs) {
+  public Fetcher(
+      HttpClient client,
+      int maxAttempts,
+      long initialDelayMs,
+      long maxDelayMs,
+      Duration requestTimeout) {
     this.client = client;
     this.maxAttempts = maxAttempts;
     this.initialDelayMs = initialDelayMs;
     this.maxDelayMs = maxDelayMs;
+    this.requestTimeout = requestTimeout;
+  }
+
+  /**
+   * Creates the http client the fetcher uses: HTTP/2, following redirects, with the given connect
+   * timeout, so a connection that does not open fails instead of waiting forever.
+   *
+   * @param connectTimeout how long a connection may take to open
+   * @return http client
+   */
+  public static HttpClient newHttpClient(Duration connectTimeout) {
+    return HttpClient.newBuilder()
+        .version(Version.HTTP_2)
+        .followRedirects(Redirect.NORMAL)
+        .connectTimeout(connectTimeout)
+        .build();
   }
 
   /**
    * Retrieves resource from the specified URI to temporary file in the target directory. Ensures
    * that temporary file is deleted if the download fails or the server returns an error. Retries on
-   * network errors and retryable HTTP status codes (429, 502, 503, 504) with exponential backoff.
+   * network errors, a response that does not begin within the request timeout, and retryable HTTP
+   * status codes (429, 502, 503, 504) with exponential backoff.
    *
    * @param uri remote location of the resource
    * @param authz authorization string for HTTP request
@@ -91,7 +121,7 @@ public class Fetcher {
       return CompletableFuture.failedFuture(e);
     }
 
-    final var request = HttpRequest.newBuilder(uri).GET();
+    final var request = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
     if (authz != null && !authz.isEmpty()) {
       request.header("Authorization", authz);
     }

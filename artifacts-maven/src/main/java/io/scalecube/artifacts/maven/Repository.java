@@ -33,6 +33,10 @@ public class Repository {
       "scalecube.artifacts.maven.repo.retryInitialDelayMs";
   public static final String REPO_RETRY_MAX_DELAY_MS_PROP_NAME =
       "scalecube.artifacts.maven.repo.retryMaxDelayMs";
+  public static final String REPO_CONNECT_TIMEOUT_MS_PROP_NAME =
+      "scalecube.artifacts.maven.repo.connectTimeoutMs";
+  public static final String REPO_REQUEST_TIMEOUT_MS_PROP_NAME =
+      "scalecube.artifacts.maven.repo.requestTimeoutMs";
   public static final String REPO_VERIFY_CACHED_CHECKSUM_PROP_NAME =
       "scalecube.artifacts.maven.repo.verifyCachedChecksum";
 
@@ -40,6 +44,8 @@ public class Repository {
   public static final int DEFAULT_REPO_RETRY_MAX_ATTEMPTS = 10;
   public static final long DEFAULT_REPO_RETRY_INITIAL_DELAY_MS = 3000L;
   public static final long DEFAULT_REPO_RETRY_MAX_DELAY_MS = 60_000L;
+  public static final long DEFAULT_REPO_CONNECT_TIMEOUT_MS = 10_000L;
+  public static final long DEFAULT_REPO_REQUEST_TIMEOUT_MS = 60_000L;
   public static final boolean DEFAULT_REPO_VERIFY_CACHED_CHECKSUM = true;
 
   private String id;
@@ -53,6 +59,8 @@ public class Repository {
   private int retryMaxAttempts;
   private long retryInitialDelayMs;
   private long retryMaxDelayMs;
+  private long connectTimeoutMs;
+  private long requestTimeoutMs;
   private boolean verifyCachedChecksum;
   private final Properties properties;
 
@@ -72,6 +80,8 @@ public class Repository {
     retryMaxAttempts(properties);
     retryInitialDelayMs(properties);
     retryMaxDelayMs(properties);
+    connectTimeoutMs(properties);
+    requestTimeoutMs(properties);
     verifyCachedChecksum(properties);
   }
 
@@ -294,6 +304,49 @@ public class Repository {
     return retryMaxDelayMs(
         getProperty(
             properties, REPO_RETRY_MAX_DELAY_MS_PROP_NAME, DEFAULT_REPO_RETRY_MAX_DELAY_MS));
+  }
+
+  /**
+   * Returns how long a connection to the repository may take to open. A connection that does not
+   * open in time fails the attempt, which is then retried like any network error.
+   *
+   * @return connect timeout, in milliseconds
+   */
+  public long connectTimeoutMs() {
+    return connectTimeoutMs;
+  }
+
+  public Repository connectTimeoutMs(long connectTimeoutMs) {
+    this.connectTimeoutMs = connectTimeoutMs;
+    return this;
+  }
+
+  public Repository connectTimeoutMs(Properties properties) {
+    return connectTimeoutMs(
+        getProperty(
+            properties, REPO_CONNECT_TIMEOUT_MS_PROP_NAME, DEFAULT_REPO_CONNECT_TIMEOUT_MS));
+  }
+
+  /**
+   * Returns how long a request may wait for the response to begin. A request whose response does
+   * not begin in time fails the attempt, which is then retried like any network error; without it a
+   * stalled request would wait forever and never be retried.
+   *
+   * @return request timeout, in milliseconds
+   */
+  public long requestTimeoutMs() {
+    return requestTimeoutMs;
+  }
+
+  public Repository requestTimeoutMs(long requestTimeoutMs) {
+    this.requestTimeoutMs = requestTimeoutMs;
+    return this;
+  }
+
+  public Repository requestTimeoutMs(Properties properties) {
+    return requestTimeoutMs(
+        getProperty(
+            properties, REPO_REQUEST_TIMEOUT_MS_PROP_NAME, DEFAULT_REPO_REQUEST_TIMEOUT_MS));
   }
 
   public boolean verifyCachedChecksum() {
