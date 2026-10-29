@@ -1,6 +1,7 @@
 package io.scalecube.artifacts.maven;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -467,6 +468,94 @@ class MavenResolverTest {
     assertEquals(fakeJar, result);
     verify(metadataResolver, times(2)).resolveRemote(repository, spec);
     verify(jarResolver, times(2)).resolveJar(eq(repository), any(), eq(remoteMeta));
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_retriesOnMetadataChecksumMismatchThenSucceeds() {
+    Repository repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+    Metadata meta = createSnapshotMetadata("20250309141500", "20250309.141500", "23");
+
+    // The first attempt falls between the publish of maven-metadata.xml and its .sha1.
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(
+            CompletableFuture.failedFuture(
+                new CompletionException(new ChecksumMismatchException("maven-metadata"))))
+        .thenReturn(CompletableFuture.completedFuture(meta));
+
+    Path fakeJar = tempCacheDir.resolve("bar-1.0-20250309.141500-23.jar");
+    when(jarResolver.resolveJar(eq(repository), any(), eq(meta)))
+        .thenReturn(CompletableFuture.completedFuture(fakeJar));
+
+    Path result = mavenResolver.resolve(spec).join();
+
+    assertEquals(fakeJar, result);
+    verify(metadataResolver, times(2)).resolveRemote(repository, spec);
+    verify(jarResolver, times(1)).resolveJar(eq(repository), any(), eq(meta));
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_exhaustsRetriesWhenMetadataChecksumStaysMismatched() {
+    Repository repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(
+            CompletableFuture.failedFuture(
+                new CompletionException(new ChecksumMismatchException("maven-metadata"))));
+
+    CompletionException ex =
+        assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
+
+    assertInstanceOf(ChecksumMismatchException.class, ex.getCause());
+    verify(metadataResolver, times(3)).resolveRemote(repository, spec);
+    verify(jarResolver, never()).resolveJar(any(), any(), any());
+  }
+
+  @Test
+  void resolve_snapshot_remotePolicy_doesNotRetryOtherIoFailures() {
+    Repository repository =
+        new Repository()
+            .id("central")
+            .url("http://localhost:0")
+            .authz("Bearer cool-token")
+            .repoDir(tempCacheDir.toFile())
+            .repoUpdatePolicy(UpdatePolicy.REMOTE)
+            .retryMaxAttempts(3)
+            .retryInitialDelayMs(0L);
+
+    MavenResolver mavenResolver = new MavenResolver(repository, metadataResolver, jarResolver);
+
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+
+    when(metadataResolver.resolveRemote(repository, spec))
+        .thenReturn(
+            CompletableFuture.failedFuture(new CompletionException(new IOException("broken"))));
+
+    assertThrows(CompletionException.class, () -> mavenResolver.resolve(spec).join());
+    verify(metadataResolver, times(1)).resolveRemote(repository, spec);
   }
 
   private Metadata createSnapshotMetadata(

@@ -89,7 +89,7 @@ public class MetadataResolver {
                   final var expectedSha1 = expectedSha1(tmpSha1);
 
                   if (!expectedSha1.equalsIgnoreCase(actualSha1)) {
-                    throw new IOException("Checksum mismatch for maven-metadata");
+                    throw new ChecksumMismatchException("maven-metadata");
                   }
 
                   // Parse before publishing, so a failure here never leaves a half-written file
@@ -124,8 +124,8 @@ public class MetadataResolver {
   /**
    * Publishes a downloaded file with an atomic move, treating "the identical content is already
    * there" as success. Metadata is fetched on every resolve, so concurrent resolutions of one
-   * coordinate all publish the same bytes and only the first move is needed. On Windows replacing
-   * a file another thread holds open fails, and overwriting identical content is not worth that.
+   * coordinate all publish the same bytes and only the first move is needed. On Windows replacing a
+   * file another thread holds open fails, and overwriting identical content is not worth that.
    */
   private static void publish(Path tmp, Path target, String sha1) throws IOException {
     synchronized (publishLock(target)) {
@@ -206,8 +206,8 @@ public class MetadataResolver {
 
   /**
    * Deletes the temp file a fetch downloaded, once the resolution around it has failed. A fetch
-   * that failed already cleaned up after itself; this is for the one that succeeded while the
-   * other failed, whose file would otherwise be left behind in the repository.
+   * that failed already cleaned up after itself; this is for the one that succeeded while the other
+   * failed, whose file would otherwise be left behind in the repository.
    *
    * @param fetch a completed or failed fetch
    */
