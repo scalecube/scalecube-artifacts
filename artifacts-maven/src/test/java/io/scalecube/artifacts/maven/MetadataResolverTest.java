@@ -1,6 +1,7 @@
 package io.scalecube.artifacts.maven;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -11,8 +12,10 @@ import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -112,6 +115,41 @@ class MetadataResolverTest {
 
     // Verify
     assertThrows(CompletionException.class, future::join);
+  }
+
+  @Test
+  void shouldFailWithChecksumMismatchWhenSha1DoesNotMatch() throws IOException {
+    String spec = "com.foo:bar:1.0-SNAPSHOT";
+    String path = "/com/foo/bar/1.0-SNAPSHOT/maven-metadata.xml";
+    byte[] newXml = "<metadata><groupId>com.foo</groupId></metadata>".getBytes();
+    byte[] oldSha1 = computeSha1("<metadata/>".getBytes()).getBytes();
+
+    // A publish in flight: the new metadata is up, its .sha1 is still the previous one.
+    server.createContext(
+        path,
+        ex -> {
+          ex.sendResponseHeaders(200, newXml.length);
+          ex.getResponseBody().write(newXml);
+          ex.close();
+        });
+    server.createContext(
+        path + ".sha1",
+        ex -> {
+          ex.sendResponseHeaders(200, oldSha1.length);
+          ex.getResponseBody().write(oldSha1);
+          ex.close();
+        });
+
+    CompletionException ex =
+        assertThrows(
+            CompletionException.class,
+            () -> metadataResolver.resolveRemote(repository, spec).join());
+
+    assertInstanceOf(ChecksumMismatchException.class, ex.getCause());
+    Path dir = Repository.localFile(repository, spec, "maven-metadata.xml").getParent();
+    try (Stream<Path> files = Files.list(dir)) {
+      assertEquals(List.of(), files.toList());
+    }
   }
 
   private void mockRemoteMetadata(String path, byte[] content) {

@@ -166,7 +166,9 @@ can unset an inherited value.
 Two retry ladders apply, and both use the settings below. `Fetcher` retries an individual request on
 a network error or a retryable status (429, 502, 503, 504). `MavenResolver` retries the whole
 metadata-then-jar chain on 404, because a freshly published artifact answers 404 on its metadata
-before its jar appears.
+before its jar appears, and on a `maven-metadata.xml` checksum mismatch, because a publish uploads
+the metadata and its `.sha1` separately. Each attempt fetches both files again; a mismatched pair is
+never written to the local repository.
 
 - `scalecube.artifacts.maven.repo.retryMaxAttempts` `(integer: 10)` – Total attempts, including the
   first, before the returned `CompletableFuture` fails.

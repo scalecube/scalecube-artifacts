@@ -76,7 +76,7 @@ public class MavenResolver implements ArtifactResolver {
   }
 
   private CompletableFuture<Path> doResolve(Coordinates coordinates, int attempt) {
-    return jar(coordinates).exceptionallyCompose(ex -> retryOn404(ex, coordinates, attempt));
+    return jar(coordinates).exceptionallyCompose(ex -> retryNotReady(ex, coordinates, attempt));
   }
 
   private CompletableFuture<Path> jar(Coordinates coordinates) {
@@ -86,20 +86,25 @@ public class MavenResolver implements ArtifactResolver {
   }
 
   /**
-   * Retries the whole chain on 404, not just the jar. A freshly published artifact takes time to
-   * appear in the registry, and its metadata answers 404 before its jar does, so retrying only the
-   * jar never helped.
+   * Retries the whole chain while a publish is in flight, not just the jar. A freshly published
+   * artifact takes time to appear in the registry, and its metadata answers 404 before its jar
+   * does, so retrying only the jar never helped. A publish also uploads maven-metadata.xml and its
+   * .sha1 separately, so a resolution that falls between the two sees a checksum mismatch; the
+   * retry fetches both files again.
    */
-  private CompletableFuture<Path> retryOn404(Throwable ex, Coordinates coordinates, int attempt) {
+  private CompletableFuture<Path> retryNotReady(
+      Throwable ex, Coordinates coordinates, int attempt) {
     final Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
-    if (cause instanceof FetchException fe
-        && fe.statusCode() == 404
-        && attempt < repository.retryMaxAttempts()) {
+    final boolean notReady =
+        cause instanceof FetchException fe && fe.statusCode() == 404
+            || cause instanceof ChecksumMismatchException;
+    if (notReady && attempt < repository.retryMaxAttempts()) {
       final long delayMs =
           Math.min(repository.retryInitialDelayMs() << (attempt - 1), repository.retryMaxDelayMs());
       LOGGER.info(
-          "Not published yet: {}, retrying in {}ms (attempt {}/{})",
+          "Not published yet: {} ({}), retrying in {}ms (attempt {}/{})",
           coordinates,
+          cause.getMessage(),
           delayMs,
           attempt,
           repository.retryMaxAttempts());
